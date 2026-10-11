@@ -32,7 +32,7 @@ Erfolg heißt: Die App wird morgens geöffnet, weil sie in Sekunden eine verläs
 ## Operating Context
 
 - Genutzt wird die App vor allem früh morgens vor der Abfahrt, oft bei Dunkelheit, auf dem iPhone, mit einem kurzen Blick. Am Abend kommt der Rückweg dazu.
-- **Fahrtdaten:** Bosch bietet keine öffentliche Kiox-API. Der Weg geht daher über Kiox → eBike Flow → Strava → Rückenwind (Strava-API mit eigener Client-ID). Der Nutzer verwendet komoot. Strava ist nur als Datenbrücke vorgesehen. Fahrten lassen sich auch manuell eintragen.
+- **Fahrtdaten:** Bosch bietet keine öffentliche Kiox-API. Gewählt ist der kostenlose Weg Kiox → eBike Flow → Apple Health → iOS-Kurzbefehl → Zwischenablage → Rückenwind (ungetestet auf dem iPhone). Die Strava-Schnittstelle ist kostenpflichtig und deshalb nur optional. Fahrten lassen sich auch manuell eintragen. Der Nutzer verwendet komoot.
 - **Pendelfahrt-Erkennung:** Start und Ende liegen in der Nähe von Zuhause und Arbeit. Fehlen Koordinaten, entscheiden Distanz und Tageszeit.
 - **Externe Dienste:**
   - Open-Meteo für das Wetter (kostenlos, ohne Schlüssel);

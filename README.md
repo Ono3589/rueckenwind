@@ -39,17 +39,21 @@ Unter Einstellungen → Sicherheit lässt sich eine PIN (6, 8 oder 10 Ziffern) e
 - Es gibt keinen Server und kein Konto. Eine Anmeldung mit Einmalcode (OTP) wäre nur mit einem Server sinnvoll, etwa für Synchronisation oder eine Team-Funktion.
 - Kartenkacheln und der Wetter-Zwischenspeicher werden bei aktiver Sperre nicht gespeichert, weil sie die Gegend deiner Route verraten.
 
-## Strava-Anbindung (Kiox-Daten)
+## Fahrten aus Apple Health (Kiox → eBike Flow → Apple Health → Rückenwind)
 
-Bosch bietet keine öffentliche Kiox-API. Der Weg geht deshalb über Strava:
-**Kiox → eBike Flow → Strava → Rückenwind**. komoot lässt sich zusätzlich mit Strava verbinden.
+Bosch bietet keine öffentliche Kiox-API. Der kostenlose Weg geht über Apple Health:
 
-1. In der eBike-Flow-App Strava verbinden.
-2. Unter https://www.strava.com/settings/api eine eigene API-App anlegen. Als *Authorization Callback Domain* den Hostnamen deiner gehosteten App eintragen (bei GitHub Pages `<dein-name>.github.io`), lokal `localhost`.
-3. In Rückenwind unter Einstellungen → Strava die Client-ID und das Client-Secret eintragen und verbinden.
+1. In der **eBike-Flow**-App die Verbindung zu Apple Health einschalten.
+2. In der **Kurzbefehle**-App einen Kurzbefehl bauen, der die letzten Radtrainings aus Apple Health liest und pro Fahrt eine Zeile `datum;start;km;minuten;kcal` in die **Zwischenablage** kopiert, zum Beispiel `2026-10-12;07:31;10,4;27;186`. Start, Dauer und Kalorien dürfen fehlen. Eine Zeile `datum;;km` mit der Tagessumme wird auf Hin- und Rückweg verteilt.
+3. In Rückenwind unter **Fahrten → Einfügen** die gefundenen Fahrten ansehen und übernehmen. Fahrten, die nicht zu deiner Strecke passen, sind abgewählt, bereits übernommene werden übersprungen.
 
-Als Pendelfahrt zählt eine Fahrt, die bis 400 m von Zuhause bzw. Arbeit startet und endet. Fehlen Koordinaten, entscheiden Distanz (±35 %) und Tageszeit.
-Kalorien kommen aus Strava (also von der Kiox). Ohne diese Daten werden sie aus Gewicht × MET × Fahrtdauer geschätzt.
+Warum die Zwischenablage? Ein Link aus einem Kurzbefehl öffnet auf dem iPhone immer Safari, nie die installierte App. Safari und die App haben getrennten Speicher, die Daten kämen also nie an. Die Zwischenablage ist der einzige Weg, der in die installierte App führt. iOS fragt beim Einfügen einmal nach.
+
+Der Kurzbefehl wurde ohne iPhone entworfen und ist **ungetestet**. Die Bezeichnungen der Aktionen können je nach iOS-Version abweichen. Das Einlesen der Zeilen in der App ist getestet (`tests/health.test.mjs`).
+
+### Strava (optional, kostenpflichtig)
+
+Die Strava-Schnittstelle ist nur mit einem Strava-Abonnement nutzbar. Wer eines hat, kann in den Einstellungen unter Kiox-Fahrten → Strava eine eigene API-App eintragen (Authorization Callback Domain: `<dein-name>.github.io`). Ohne Abo bleibt dieser Teil ungenutzt.
 
 ## Aufbau
 
@@ -57,7 +61,8 @@ Kalorien kommen aus Strava (also von der Kiox). Ohne diese Daten werden sie aus 
 | --- | --- |
 | `js/weather.js` | Open-Meteo-Abfrage, Bewertung von Hin- und Rückweg, Wind relativ zur Fahrtrichtung, Ausrüstungstipps |
 | `js/costs.js` | Kosten pro km für Auto (aus Verbrauch, Preis, Jahreskosten) und E-Bike, CO₂, Bilanz, Entfernungspauschale |
-| `js/strava.js` | OAuth, Aktivitäten laden, Pendelfahrten erkennen |
+| `js/strava.js` | OAuth, Aktivitäten laden, Pendelfahrten erkennen (optional, Strava-Abo nötig) |
+| `js/health.js` | Fahrten aus der Zwischenablage (Apple-Health-Kurzbefehl) einlesen und prüfen |
 | `js/geo.js` | Distanz, Kurs, Adresssuche (OpenStreetMap Nominatim), Radroute (FOSSGIS-Routing), Standort |
 | `js/map.js` | Kartenvorschau aus OpenStreetMap-Kacheln mit Routenlinie (ein SVG), Linie ausdünnen |
 | `js/store.js` | Einstellungen und Fahrten im localStorage |

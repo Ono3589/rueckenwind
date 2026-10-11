@@ -1,6 +1,7 @@
 import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } from './store.js';
 import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
 import { askPin, hideLock, showMessage } from './lock.js';
+import { parseHealthText } from './health.js';
 import { midpoint, distanceM, searchAddress, currentPosition, fetchBikeRoute } from './geo.js';
 import { mapThumb, simplify } from './map.js';
 import { fetchForecast, pickTargetDate, assessDay, fmtMin, tripMinutes } from './weather.js';
@@ -164,7 +165,7 @@ function makeRide({ date, direction, km, minutes = null, kcal = null, source = '
     km,
     minutes,
     kcal: estimated ? estimateKcal(km, minutes, state.person, state.route.avgSpeed) : kcal,
-    kcalSource: estimated ? 'schätzung' : 'strava',
+    kcalSource: estimated ? 'schätzung' : source,
     source,
     stravaId,
     name,
@@ -358,6 +359,75 @@ function renderToday() {
 
 // ---------- Ansicht: Fahrten ----------
 
+// ---------- Fahrten aus Apple Health ----------
+
+let importPreview = null; // { items, ignored }
+
+const DIR_LABEL = { hin: 'Hinweg', rueck: 'Rückweg' };
+
+function shortcutHelp() {
+  return `<ol class="steps">
+    <li>In der <strong>eBike Flow</strong>-App die Verbindung zu <strong>Apple Health</strong> einschalten. In der Health-App unter „Teilen“ prüfen, dass eBike Flow Trainings (Radfahren) schreibt.</li>
+    <li>In der <strong>Kurzbefehle</strong>-App einen neuen Kurzbefehl „Rückenwind“ anlegen:
+      <ol>
+        <li><em>Health-Samples suchen</em>: Typ <strong>Trainings</strong>, Aktivität Radfahren, Startdatum in den letzten 2 Tagen.</li>
+        <li><em>Für jedes Element wiederholen</em>: darin einen <strong>Text</strong> aus Startdatum (Format <code>yyyy-MM-dd</code>), <code>;</code>, Startdatum (Format <code>HH:mm</code>), <code>;</code>, Strecke in km, <code>;</code>, Dauer in Minuten, <code>;</code>, aktive Energie in kcal bauen.</li>
+        <li>Danach <em>Text kombinieren</em> (neue Zeile) und <em>In die Zwischenablage kopieren</em>.</li>
+      </ol>
+    </li>
+    <li>Optional als <strong>Automation</strong>: Persönliche Automation, Tageszeit 18:30, den Kurzbefehl ohne Nachfrage ausführen.</li>
+    <li>Hier auf <strong>Einfügen</strong> tippen und die gefundenen Fahrten bestätigen.</li>
+  </ol>
+  <p class="note">Eine Zeile pro Fahrt, zum Beispiel:</p>
+  <code class="codebox">2026-10-12;07:31;10,4;27;186</code>
+  <p class="note">Start, Dauer und Kalorien dürfen fehlen. Gibt es keine Trainings, reicht auch die Tagessumme der Raddistanz als <code>2026-10-12;;20,8</code>. Die App verteilt sie auf Hin- und Rückweg. Die Bezeichnungen der Aktionen können je nach iOS-Version leicht abweichen.</p>`;
+}
+
+function loadImportPreview(text) {
+  const { items, ignored } = parseHealthText(text, { distanceKm: state.route.distanceKm, today: todayISO() });
+  for (const it of items) {
+    it.dup = state.rides.some((r) => r.ref === it.ref);
+    it.checked = it.fits && !it.dup;
+  }
+  importPreview = items.length ? { items, ignored } : null;
+  if (!items.length) {
+    moreOpen.paste = true;
+    toast(ignored.length ? 'Die Zeilen konnten nicht gelesen werden. Format: Datum;Start;km;Minuten;kcal' : 'In der Zwischenablage stehen keine Fahrten');
+  }
+  renderRides();
+}
+
+function healthCard() {
+  if (importPreview) {
+    const { items, ignored } = importPreview;
+    const n = items.filter((i) => i.checked).length;
+    return `<section class="card import">
+      <h2>${items.length} ${items.length === 1 ? 'Fahrt' : 'Fahrten'} gefunden</h2>
+      <ul class="import-list">
+        ${items
+          .map(
+            (it, i) => `<li><label>
+              <input type="checkbox" data-import="${i}" ${it.checked ? 'checked' : ''} ${it.dup ? 'disabled' : ''}>
+              <span><strong>${fmt.dayShort(it.date)} · ${DIR_LABEL[it.direction]}${it.start ? ` · ${it.start}` : ''}</strong>
+              <small>${fmt.km(it.km)} km${it.minutes ? ` · ${it.minutes} min` : ''}${it.kcal != null ? ` · ${it.kcal} kcal` : ''}${it.dup ? ' · schon übernommen' : !it.fits ? ' · passt nicht zu deiner Strecke' : ''}${it.note ? ` · ${esc(it.note)}` : ''}</small></span>
+            </label></li>`,
+          )
+          .join('')}
+      </ul>
+      ${ignored.length ? `<p class="note">${ignored.length} ${ignored.length === 1 ? 'Zeile wurde' : 'Zeilen wurden'} übersprungen (unlesbar oder unplausibel).</p>` : ''}
+      <div class="actions"><button class="btn primary" data-action="health-apply" ${n ? '' : 'disabled'}>${n} übernehmen</button><button class="btn ghost" data-action="health-discard">Verwerfen</button></div>
+    </section>`;
+  }
+  return `<section class="card health">
+    <div class="health-head">
+      <div><strong>Fahrten aus Apple Health</strong><p class="muted">Kurzbefehl ausführen, dann hier einfügen.</p></div>
+      <button class="btn primary" data-action="health-paste">Einfügen</button>
+    </div>
+    ${more('paste', 'Text selbst einfügen', 'falls die Zwischenablage nicht freigegeben wird', `<form class="paste-form" data-form="health-text"><textarea name="t" rows="4" placeholder="2026-10-12;07:31;10,4;27;186" aria-label="Fahrten als Text" required></textarea><button class="btn" type="submit">Lesen</button></form>`)}
+    ${more('health', 'Kurzbefehl einrichten', 'einmalig, etwa 5 Minuten', shortcutHelp())}
+  </section>`;
+}
+
 function renderRides() {
   const perKm = summarize([], state).perKm;
   const rides = [...state.rides].sort((a, b) => (a.date === b.date ? (a.direction === 'hin' ? 1 : -1) : a.date < b.date ? 1 : -1));
@@ -374,13 +444,14 @@ function renderRides() {
   view.innerHTML = `
   <header class="page"><h1>Fahrten</h1><p class="muted">${rides.length ? `${rides.length} Fahrten · ${fmt.km(rides.reduce((a, r) => a + r.km, 0))} km` : 'Noch keine Fahrten. Trag deine erste unten ein.'}</p></header>
 
+  ${healthCard()}
   ${
     connected
       ? `<section class="card strava">
           <div><strong>Strava verbunden</strong><p class="muted">${s.lastSync ? `Zuletzt abgeglichen ${new Date(s.lastSync).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : 'Noch nicht abgeglichen'}</p></div>
           <button class="btn" data-action="sync">${I.refresh}Abgleichen</button>
         </section>`
-      : `<a class="card strava hint" href="#einstellungen" data-scroll="strava"><div><strong>Fahrten automatisch übernehmen</strong><p class="muted">Kiox über eBike Flow und Strava verbinden</p></div><span class="chev" aria-hidden="true">›</span></a>`
+      : ''
   }
 
   <details class="card add" ${rides.length ? '' : 'open'}>
@@ -407,7 +478,7 @@ function renderRides() {
             <span class="dir ${r.direction}" aria-hidden="true">${I.arrow}</span>
             <div class="what">
               <strong>${fmt.dayShort(r.date)} · ${r.direction === 'hin' ? 'Hinweg' : 'Rückweg'}</strong>
-              <span>${r.source === 'strava' ? 'Strava' : 'Manuell'}${r.minutes ? ` · ${r.minutes} min` : ''} · ${fmt.int(r.kcal)} kcal${r.kcalSource === 'schätzung' ? '*' : ''}</span>
+              <span>${{ strava: 'Strava', health: 'Apple Health' }[r.source] ?? 'Manuell'}${r.minutes ? ` · ${r.minutes} min` : ''} · ${fmt.int(r.kcal)} kcal${r.kcalSource === 'schätzung' ? '*' : ''}</span>
             </div>
             <div class="nums"><strong>${fmt.km(r.km)} km</strong><span class="save">+${fmt.eur(rideSaving(r, perKm))}</span></div>
             <button class="icon-btn" data-action="delete-ride" data-id="${r.id}" aria-label="Fahrt löschen">${I.trash}</button>
@@ -614,7 +685,13 @@ function distanceBlock() {
 }
 
 const editingPlace = { home: false, work: false };
-const moreOpen = { car: false, fine: false, strava: false, rules: false };
+const moreOpen = { car: false, fine: false, strava: false, rules: false, health: false, paste: false };
+
+const more = (id, title, hint, body) => `
+    <details class="more" data-more="${id}" ${moreOpen[id] ? 'open' : ''}>
+      <summary><span>${title}<small>${hint}</small></span></summary>
+      <div class="more-body">${body}</div>
+    </details>`;
 
 function placeBlock(which, label) {
   const p = state.route[which];
@@ -795,12 +872,6 @@ function renderSettings() {
   const s = state.strava;
   const days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
-  const more = (id, title, hint, body) => `
-    <details class="more" data-more="${id}" ${moreOpen[id] ? 'open' : ''}>
-      <summary><span>${title}<small>${hint}</small></span></summary>
-      <div class="more-body">${body}</div>
-    </details>`;
-
   view.innerHTML = `
   <header class="page"><h1>Einstellungen</h1><p class="muted">Alles bleibt auf diesem Gerät gespeichert.</p></header>
 
@@ -898,26 +969,25 @@ function renderSettings() {
   </div></section>
 
   <section class="group" id="strava"><h2>Kiox-Fahrten</h2><div class="card settings">
-    ${
+    <p class="note">Deine Fahrten kommen über <strong>Apple Health</strong> in die App: Ein Kurzbefehl legt sie in die Zwischenablage, auf „Fahrten“ übernimmst du sie mit einem Tipp. Ohne das trägst du sie von Hand ein.</p>
+    <a class="btn" href="#fahrten" data-scroll="health">Zu den Fahrten</a>
+    ${more(
+      'strava',
+      'Strava',
+      'nur mit Strava-Abo, die Schnittstelle ist kostenpflichtig',
       s.refreshToken
         ? `<p>Strava verbunden${s.athleteName ? ` als <strong>${esc(s.athleteName)}</strong>` : ''}.</p>
            <div class="actions"><button class="btn primary" data-action="sync">${I.refresh}Jetzt abgleichen</button><button class="btn ghost" data-action="strava-disconnect">Trennen</button></div>`
-        : `<p class="note">Fahrten und Kalorien der Kiox kommen über Strava automatisch in die App. Ohne Anbindung trägst du Fahrten von Hand ein.</p>
-          ${more(
-            'strava',
-            'Strava einrichten',
-            'in drei Schritten',
-            `<ol class="steps">
-              <li>In der <strong>eBike Flow</strong>-App Strava verbinden. Optional auch komoot mit Strava verbinden.</li>
-              <li>Auf <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a> eine eigene API-App anlegen. Als „Authorization Callback Domain“ eintragen: <code>${esc(location.hostname)}</code></li>
-              <li>Client-ID und Client-Secret hier eintragen und verbinden.</li>
-            </ol>
-            <label class="field">Client-ID<span class="input"><input type="text" inputmode="numeric" data-path="strava.clientId" value="${esc(s.clientId)}" autocomplete="off"></span></label>
-            <label class="field">Client-Secret<span class="input"><input type="password" data-path="strava.clientSecret" value="${esc(s.clientSecret)}" autocomplete="off"></span></label>
-            <button class="btn primary wide" data-action="strava-connect">Mit Strava verbinden</button>
-            <p class="note">Das Secret bleibt nur in diesem Browser. Erkannt werden Fahrten, die bis ${state.route.matchRadiusM} m von Zuhause bzw. Arbeit starten und enden.</p>`,
-          )}`
-    }
+        : `<ol class="steps">
+            <li>In der <strong>eBike Flow</strong>-App Strava verbinden. Optional auch komoot mit Strava verbinden.</li>
+            <li>Auf <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a> eine eigene API-App anlegen. Strava verlangt dafür ein Abonnement. Als „Authorization Callback Domain“ eintragen: <code>${esc(location.hostname)}</code></li>
+            <li>Client-ID und Client-Secret hier eintragen und verbinden.</li>
+          </ol>
+          <label class="field">Client-ID<span class="input"><input type="text" inputmode="numeric" data-path="strava.clientId" value="${esc(s.clientId)}" autocomplete="off"></span></label>
+          <label class="field">Client-Secret<span class="input"><input type="password" data-path="strava.clientSecret" value="${esc(s.clientSecret)}" autocomplete="off"></span></label>
+          <button class="btn primary wide" data-action="strava-connect">Mit Strava verbinden</button>
+          <p class="note">Das Secret bleibt nur in diesem Browser. Erkannt werden Fahrten, die bis ${state.route.matchRadiusM} m von Zuhause bzw. Arbeit starten und enden.</p>`,
+    )}
   </div></section>
 
   <section class="group"><h2>Sicherheit</h2><div class="card settings">
@@ -942,7 +1012,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.8.1 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.9 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -992,6 +1062,16 @@ view.addEventListener('input', (e) => {
 view.addEventListener('change', (e) => {
   const el = e.target;
   if (el.dataset.action === 'import-json') return importJson(el);
+  if (el.dataset.import !== undefined && importPreview) {
+    importPreview.items[+el.dataset.import].checked = el.checked;
+    const n = importPreview.items.filter((i) => i.checked && !i.dup).length;
+    const btn = view.querySelector('[data-action="health-apply"]');
+    if (btn) {
+      btn.textContent = `${n} übernehmen`;
+      btn.disabled = n === 0;
+    }
+    return;
+  }
   if (!el.dataset.path) return;
   const v = readInput(el);
   if (v === null) return;
@@ -1030,6 +1110,10 @@ view.addEventListener('submit', async (e) => {
     persist();
     toast(added ? `${added === 2 ? 'Hin- und Rückweg' : '1 Fahrt'} eingetragen` : 'Für diesen Tag schon eingetragen');
     renderRides();
+  }
+  if (form.dataset.form === 'health-text') {
+    loadImportPreview(new FormData(form).get('t'));
+    return;
   }
   if (form.dataset.form === 'save-preset') {
     const label = new FormData(form).get('name').trim();
@@ -1072,6 +1156,34 @@ function setPlace(which, place) {
 const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
+  'health-paste': async () => {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      moreOpen.paste = true;
+      renderRides();
+      toast('Die Zwischenablage ist nicht freigegeben. Füge den Text unten ein.');
+      return;
+    }
+    loadImportPreview(text);
+  },
+  'health-discard': () => {
+    importPreview = null;
+    renderRides();
+  },
+  'health-apply': () => {
+    const chosen = (importPreview?.items ?? []).filter((i) => i.checked && !i.dup);
+    for (const it of chosen) {
+      // Genauere Werte ersetzen eine von Hand eingetragene Fahrt am selben Tag in derselben Richtung
+      state.rides = state.rides.filter((r) => !(r.source === 'manuell' && r.date === it.date && r.direction === it.direction));
+      state.rides.push({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'health' }), ref: it.ref });
+    }
+    importPreview = null;
+    persist();
+    toast(`${chosen.length} ${chosen.length === 1 ? 'Fahrt' : 'Fahrten'} übernommen`);
+    renderRides();
+  },
   'pin-len': (el) => {
     pinLenChoice = +el.dataset.len;
     view.querySelectorAll('[data-action="pin-len"]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.len === pinLenChoice)));
