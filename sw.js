@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Hülle aus dem Cache, Wetter & Strava immer frisch aus dem Netz.
-const VERSION = 'rueckenwind-v0.7.1';
+const VERSION = 'rueckenwind-v0.8.0';
 const SHELL = [
   './',
   './index.html',
@@ -11,6 +11,9 @@ const SHELL = [
   './js/weather.js',
   './js/costs.js',
   './js/strava.js',
+  './js/map.js',
+  './js/vault.js',
+  './js/lock.js',
   './icons/icon.svg',
   './icons/icon-180.png',
   './icons/icon-192.png',
@@ -26,12 +29,12 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'tile.openstreetmap.org'];
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  // Schrift und Kartenkacheln einmal laden und danach aus dem Cache, damit sie auch offline da ist
+  // Schrift einmal laden und danach aus dem Cache. Kartenkacheln werden bewusst nicht gespeichert, sie verraten die Gegend deiner Route.
   if (FONT_HOSTS.includes(url.hostname)) {
     e.respondWith(
       caches.match(e.request).then(

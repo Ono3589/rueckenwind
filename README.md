@@ -27,6 +27,18 @@ Eine PWA braucht HTTPS. GitHub Pages liefert das ohne Konfiguration. Die App bes
 
 Für die Strava-Anbindung trägst du als *Authorization Callback Domain* `<dein-name>.github.io` ein.
 
+## App-Sperre (PIN)
+
+Unter Einstellungen → Sicherheit lässt sich eine PIN (6, 8 oder 10 Ziffern) einschalten.
+
+- Fahrten, Adressen, Fahrzeugdaten und Strava-Zugangsdaten werden mit AES-256-GCM verschlüsselt. Der Schlüssel entsteht aus der PIN (PBKDF2-SHA-256, 600 000 Runden). Die PIN selbst wird nirgends gespeichert.
+- Die App sperrt sich nach 0, 1, 5 oder 15 Minuten im Hintergrund und beim Neustart. Nach fünf falschen Versuchen kommt eine Wartezeit.
+- Sicherungen („Sichern“) sind dann ebenfalls verschlüsselt und brauchen dieselbe PIN.
+- **Keine Wiederherstellung:** Wer die PIN vergisst, kommt nicht mehr an die Daten. „PIN vergessen?“ löscht alles auf dem Gerät. Eine verschlüsselte Sicherung lässt sich danach mit ihrer PIN wieder einspielen.
+- **Grenzen:** Eine PIN hat wenige Kombinationen. Wer die verschlüsselte Datei kopiert, kann sie offline durchprobieren. 8 oder mehr Ziffern machen das deutlich schwerer. Die Sperre schützt vor fremdem Zugriff auf das Gerät oder auf Sicherungen, nicht vor Schadsoftware, die den entsperrten Zustand ausliest.
+- Es gibt keinen Server und kein Konto. Eine Anmeldung mit Einmalcode (OTP) wäre nur mit einem Server sinnvoll, etwa für Synchronisation oder eine Team-Funktion.
+- Kartenkacheln und der Wetter-Zwischenspeicher werden bei aktiver Sperre nicht gespeichert, weil sie die Gegend deiner Route verraten.
+
 ## Strava-Anbindung (Kiox-Daten)
 
 Bosch bietet keine öffentliche Kiox-API. Der Weg geht deshalb über Strava:
@@ -49,6 +61,8 @@ Kalorien kommen aus Strava (also von der Kiox). Ohne diese Daten werden sie aus 
 | `js/geo.js` | Distanz, Kurs, Adresssuche (OpenStreetMap Nominatim), Radroute (FOSSGIS-Routing), Standort |
 | `js/map.js` | Kartenvorschau aus OpenStreetMap-Kacheln mit Routenlinie (ein SVG), Linie ausdünnen |
 | `js/store.js` | Einstellungen und Fahrten im localStorage |
+| `js/vault.js` | App-Sperre: Verschlüsselung der Daten mit einem PIN-Schlüssel |
+| `js/lock.js` | Sperrbildschirm mit Zahlenfeld |
 | `js/app.js` | Oberfläche: Heute, Fahrten, Bilanz, Einstellungen |
 | `sw.js` | Offline-Cache der App-Hülle |
 

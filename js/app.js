@@ -1,13 +1,18 @@
-import { load, save, importState, newId, DEFAULTS, RULE_PRESETS } from './store.js';
+import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } from './store.js';
+import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
+import { askPin, hideLock, showMessage } from './lock.js';
 import { midpoint, distanceM, searchAddress, currentPosition, fetchBikeRoute } from './geo.js';
 import { mapThumb, simplify } from './map.js';
 import { fetchForecast, pickTargetDate, assessDay, fmtMin, tripMinutes } from './weather.js';
 import { FUEL, carCostPerKm, bikeCostPerKm, bikeRangeKm, estimateKcal, summarize } from './costs.js';
 import * as strava from './strava.js';
 
-let state = load();
+// App-Sperre: Ist sie an, liegen die Daten nur verschlüsselt im Speicher und werden erst nach der PIN geladen.
+let locked = hasVault();
+let session = null; // nur während die App entsperrt ist
+let state = locked ? structuredClone(DEFAULTS) : load();
 const view = document.getElementById('view');
-const persist = () => save(state);
+const persist = () => (session ? session.save(state) : save(state));
 
 // ---------- Formatierung ----------
 
@@ -61,6 +66,7 @@ const I = {
   refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.7" r="2.3" fill="currentColor"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   flame: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a6 6 0 0 0 6-6c0-3.5-2.5-5.5-3.5-8.5-.8 2.2-2 3.2-3 3.5.3-2.3-.5-4.6-2.5-6.5C9 7 6 9.6 6 15a6 6 0 0 0 6 6z" fill="currentColor"/></svg>',
 };
@@ -71,6 +77,7 @@ const tabs = { heute: renderToday, fahrten: renderRides, bilanz: renderStats, ei
 const currentTab = () => (tabs[location.hash.slice(1)] ? location.hash.slice(1) : 'heute');
 
 function render() {
+  if (locked) return;
   const tab = currentTab();
   document.querySelectorAll('.tabbar a').forEach((a) => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
   tabs[tab]();
@@ -95,7 +102,8 @@ const locKey = () => {
 };
 
 try {
-  const cached = JSON.parse(localStorage.getItem(FC_KEY) || 'null');
+  if (locked) localStorage.removeItem(FC_KEY); // der Zwischenspeicher enthielte die Gegend deiner Route
+  const cached = locked ? null : JSON.parse(localStorage.getItem(FC_KEY) || 'null');
   if (cached) forecast = cached;
 } catch {
   /* kein Cache */
@@ -113,7 +121,7 @@ async function ensureForecast(force = false) {
     const { home, work } = state.route;
     forecast = { ...(await fetchForecast(midpoint(home, work))), key };
     try {
-      localStorage.setItem(FC_KEY, JSON.stringify(forecast));
+      if (!session) localStorage.setItem(FC_KEY, JSON.stringify(forecast));
     } catch {
       /* Speicher voll – egal */
     }
@@ -125,7 +133,18 @@ async function ensureForecast(force = false) {
   }
 }
 
+let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    hiddenAt = Date.now();
+    session?.flush();
+    return;
+  }
+  if (locked) return;
+  if (session && hiddenAt && Date.now() - hiddenAt >= Number(state.security?.autoLockMin ?? 1) * 60000) {
+    lockNow();
+    return;
+  }
   if (document.visibilityState === 'visible') {
     const r = state.route;
     if (r.home && r.work && !r.distanceManual && r.distanceSource === 'luftlinie' && !distanceBusy) updateRouteDistance();
@@ -901,14 +920,29 @@ function renderSettings() {
     }
   </div></section>
 
+  <section class="group"><h2>Sicherheit</h2><div class="card settings">
+    ${
+      session
+        ? `<p class="sec-status">${I.lock}App-Sperre ist an · ${session.len}-stellige PIN</p>
+          <label class="field">Automatisch sperren<span class="input"><select data-path="security.autoLockMin">${[[0, 'Sofort beim Verlassen der App'], [1, 'Nach 1 Minute'], [5, 'Nach 5 Minuten'], [15, 'Nach 15 Minuten']].map(([v, l]) => `<option value="${v}" ${Number(state.security?.autoLockMin ?? 1) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></span></label>
+          <div class="actions"><button class="btn primary" data-action="lock-now">Jetzt sperren</button><button class="btn" data-action="lock-change">PIN ändern</button><button class="btn ghost" data-action="lock-disable">Ausschalten</button></div>
+          <p class="sec-note">Fahrten, Adressen und Strava-Zugangsdaten sind auf diesem Gerät verschlüsselt. Vergisst du die PIN, gibt es keinen Weg zurück. Sicherungen sind ebenfalls verschlüsselt und brauchen dieselbe PIN.</p>`
+        : `<p class="sec-note">Schützt Fahrten, Adressen und Strava-Zugangsdaten mit einer PIN. Die Daten werden auf dem Gerät verschlüsselt, nichts davon geht an einen Server.</p>
+          <div class="pinlen"><span>PIN-Länge</span><div class="chips" role="group" aria-label="PIN-Länge">${[6, 8, 10].map((n) => `<button type="button" class="chip" data-action="pin-len" data-len="${n}" aria-pressed="${pinLenChoice === n}">${n}</button>`).join('')}</div></div>
+          <button class="btn primary" data-action="lock-enable">App-Sperre einschalten</button>
+          <p class="sec-note">Länger ist sicherer: Eine kurze PIN ließe sich bei einer kopierten Datei durchprobieren. 8 oder mehr Ziffern sind deutlich besser.</p>`
+    }
+  </div></section>
+
   <section class="group"><h2>Daten</h2><div class="card settings">
     <div class="actions">
       <button class="btn" data-action="export-json">Sichern</button>
       <label class="btn">Wiederherstellen<input type="file" accept="application/json" data-action="import-json" hidden></label>
       <button class="btn danger" data-action="reset">Alles löschen</button>
     </div>
+    <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.1 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.8 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1038,6 +1072,14 @@ function setPlace(which, place) {
 const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
+  'pin-len': (el) => {
+    pinLenChoice = +el.dataset.len;
+    view.querySelectorAll('[data-action="pin-len"]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.len === pinLenChoice)));
+  },
+  'lock-enable': () => enableLock(),
+  'lock-now': () => lockNow(),
+  'lock-change': () => changePin(),
+  'lock-disable': () => disableLock(),
   'distance-retry': () => updateRouteDistance(),
   'distance-manual': () => {
     state.route.distanceManual = true;
@@ -1140,13 +1182,13 @@ const actions = {
     }
     download(`rueckenwind-fahrten-${todayISO()}.csv`, '﻿' + rows.map((r) => r.join(';')).join('\n'), 'text/csv');
   },
-  'export-json': () => download(`rueckenwind-backup-${todayISO()}.json`, JSON.stringify(state, null, 2), 'application/json'),
+  'export-json': async () => {
+    if (session) download(`rueckenwind-backup-verschluesselt-${todayISO()}.json`, JSON.stringify(await session.record()), 'application/json');
+    else download(`rueckenwind-backup-${todayISO()}.json`, JSON.stringify(state, null, 2), 'application/json');
+  },
   reset: () => {
     if (!confirm('Wirklich alle Einstellungen und Fahrten löschen?')) return;
-    state = structuredClone(DEFAULTS);
-    forecast = null;
-    persist();
-    localStorage.removeItem(FC_KEY);
+    resetEverything();
     location.hash = '#heute';
     render();
   },
@@ -1175,14 +1217,185 @@ function download(name, content, type) {
 async function importJson(input) {
   const file = input.files?.[0];
   if (!file) return;
+  input.value = '';
   try {
-    state = importState(await file.text());
+    const text = await file.text();
+    const obj = JSON.parse(text);
+    if (isVaultFile(obj)) {
+      if (!Number.isInteger(obj.len) || obj.len < 4 || obj.len > 16) throw new Error('ungültig');
+      let error = '';
+      for (;;) {
+        const pin = await askPin({ title: 'Sicherung öffnen', hint: 'PIN, mit der sie erstellt wurde', len: obj.len, error, cancelable: true, logo: false });
+        if (pin === null) return hideLock();
+        try {
+          const r = await importVault(text, pin);
+          state = importState(JSON.stringify(r.state));
+          session = r.session;
+          locked = false;
+          clearPlain();
+          localStorage.removeItem(FC_KEY);
+          hideLock();
+          toast('Daten wiederhergestellt');
+          render();
+          return;
+        } catch {
+          error = 'Falsche PIN oder beschädigte Datei';
+        }
+      }
+    }
+    state = importState(text);
     persist();
     toast('Daten wiederhergestellt');
     render();
   } catch {
+    hideLock();
     toast('Datei konnte nicht gelesen werden');
   }
+}
+
+// ---------- App-Sperre ----------
+
+let pinLenChoice = 6;
+let failCount = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const FORGOT = '__forgot';
+
+function resetEverything() {
+  removeVault();
+  clearPlain();
+  localStorage.removeItem(FC_KEY);
+  session = null;
+  locked = false;
+  state = structuredClone(DEFAULTS);
+  forecast = null;
+}
+
+async function unlockFlow() {
+  const meta = vaultMeta();
+  if (!meta) {
+    if (confirm('Die verschlüsselten Daten sind beschädigt und lassen sich nicht öffnen. Zurücksetzen und neu starten?')) resetEverything();
+    hideLock();
+    return;
+  }
+  let error = '';
+  for (;;) {
+    if (failCount >= 5) {
+      const wait = Math.min(60, 5 * 2 ** (failCount - 5));
+      for (let s = wait; s > 0; s--) {
+        showMessage({ title: 'Zu viele Versuche', text: `Bitte warte ${s} Sekunden.` });
+        await sleep(1000);
+      }
+    }
+    const pin = await askPin({ title: 'Rückenwind', hint: 'PIN eingeben', len: meta.len, error, links: [{ label: 'PIN vergessen?', value: FORGOT }] });
+    if (pin === FORGOT) {
+      if (confirm('Alle Daten auf diesem Gerät löschen und neu starten? Ohne PIN lassen sie sich nicht wiederherstellen. Eine verschlüsselte Sicherung kannst du danach mit ihrer PIN wieder einspielen.')) {
+        resetEverything();
+        hideLock();
+        return;
+      }
+      continue;
+    }
+    try {
+      const r = await unlockVault(pin);
+      state = importState(JSON.stringify(r.state));
+      session = r.session;
+      locked = false;
+      failCount = 0;
+      hideLock();
+      return;
+    } catch {
+      failCount++;
+      error = 'Falsche PIN';
+    }
+  }
+}
+
+async function lockNow() {
+  if (!session) return;
+  await session.flush();
+  session = null;
+  locked = true;
+  state = structuredClone(DEFAULTS);
+  forecast = null;
+  view.innerHTML = '';
+  await unlockFlow();
+  boot();
+}
+
+// Neue PIN zweimal abfragen. Gibt null zurück, wenn abgebrochen wurde.
+async function askNewPin(len) {
+  let error = '';
+  for (;;) {
+    const p1 = await askPin({ title: 'PIN festlegen', hint: `${len} Ziffern, die du dir gut merken kannst`, len, error, cancelable: true, logo: false });
+    if (p1 === null) return null;
+    if (weakPin(p1)) {
+      error = 'Zu einfach: keine Zahlenfolge, nicht lauter gleiche Ziffern';
+      continue;
+    }
+    const p2 = await askPin({ title: 'PIN wiederholen', hint: 'Zur Sicherheit noch einmal', len, cancelable: true, logo: false });
+    if (p2 === null) return null;
+    if (p1 === p2) return p1;
+    error = 'Die beiden PINs waren nicht gleich';
+  }
+}
+
+async function confirmPin(title, hint) {
+  let error = '';
+  for (;;) {
+    const pin = await askPin({ title, hint, len: session.len, error, cancelable: true, logo: false });
+    if (pin === null) return null;
+    if (await verifyPin(pin)) return pin;
+    error = 'Falsche PIN';
+  }
+}
+
+async function enableLock() {
+  if (!globalThis.crypto?.subtle) {
+    toast('Verschlüsselung braucht eine sichere Verbindung (https)');
+    return;
+  }
+  const pin = await askNewPin(pinLenChoice);
+  if (pin === null) {
+    hideLock();
+    return;
+  }
+  try {
+    session = await createVault(pin, state);
+    clearPlain();
+    localStorage.removeItem(FC_KEY);
+    toast('App-Sperre ist an');
+  } catch {
+    toast('Verschlüsselung ist fehlgeschlagen');
+  }
+  hideLock();
+  renderSettings();
+}
+
+async function changePin() {
+  const old = await confirmPin('Aktuelle PIN', 'Zum Ändern der PIN');
+  if (old === null) return hideLock();
+  const next = await askNewPin(session.len);
+  if (next === null) return hideLock();
+  try {
+    await session.changePin(old, next);
+    toast('PIN geändert');
+  } catch {
+    toast('PIN konnte nicht geändert werden');
+  }
+  hideLock();
+  renderSettings();
+}
+
+async function disableLock() {
+  const pin = await confirmPin('PIN eingeben', 'Zum Ausschalten der App-Sperre');
+  if (pin === null) return hideLock();
+  await session.flush();
+  save(state);
+  removeVault();
+  session = null;
+  hideLock();
+  renderSettings();
+  toast('App-Sperre ist aus. Die Daten liegen wieder unverschlüsselt auf dem Gerät.');
 }
 
 // ---------- Strava-Abgleich ----------
@@ -1224,9 +1437,14 @@ async function handleOAuthReturn() {
 
 // ---------- Start ----------
 
-render();
-handleOAuthReturn();
-if (state.route.home && state.route.work && ((!state.route.distanceManual && !state.route.distanceSource) || !state.route.path?.length)) updateRouteDistance();
+function boot() {
+  render();
+  handleOAuthReturn();
+  if (state.route.home && state.route.work && ((!state.route.distanceManual && !state.route.distanceSource) || !state.route.path?.length)) updateRouteDistance();
+}
+
+if (locked) unlockFlow().then(boot);
+else boot();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

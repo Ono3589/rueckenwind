@@ -498,3 +498,34 @@ code { font-size: 13px; padding: 1px 6px; border-radius: 6px; background: var(--
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- App-Sperre ---------- */
+
+.lock { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow-y: auto; background: var(--bg); padding: calc(var(--safe-t) + 24px) 20px calc(var(--safe-b) + 24px); }
+.lock[hidden] { display: none; }
+.has-lock .app, .has-lock .tabbar { visibility: hidden; }
+.lock-inner { width: 100%; max-width: 320px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.lock-logo { width: 64px; height: 64px; border-radius: 16px; margin-bottom: 18px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3); }
+.lock-inner h1 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 650; letter-spacing: -0.02em; }
+.lock-hint { margin-top: 4px; min-height: 1.4em; font-size: var(--fs-small); color: var(--muted); }
+.lock-dots { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin: 26px 0 8px; }
+.lock-dots i { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--faint); transition: background 0.15s, border-color 0.15s, transform 0.2s var(--ease); }
+.lock-dots i.on { background: var(--accent); border-color: var(--accent); transform: scale(1.1); }
+.lock-dots.shake { animation: shake 0.4s var(--ease); }
+@keyframes shake { 20%, 60% { transform: translateX(-9px); } 40%, 80% { transform: translateX(9px); } }
+.lock-count { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.lock-error { min-height: 1.4em; font-size: var(--fs-small); color: var(--no); font-weight: 550; }
+.lock-pad { display: grid; grid-template-columns: repeat(3, 76px); gap: 14px; margin-top: 10px; justify-content: center; }
+.lock-pad button { width: 76px; height: 76px; border-radius: 50%; border: 0; background: var(--surface); color: var(--text); font-family: var(--font-display); font-size: 1.75rem; font-weight: 500; cursor: pointer; display: grid; place-items: center; transition: background 0.12s, transform 0.12s; }
+.lock-pad button:hover { background: var(--surface-2); }
+.lock-pad button:active { background: var(--surface-2); transform: scale(0.94); }
+.lock-pad button.ghost { background: none; font-family: var(--font); font-size: 14px; font-weight: 550; color: var(--muted); }
+.lock-pad button svg { width: 26px; height: 26px; }
+.lock-links { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+@media (max-height: 640px) { .lock-pad { gap: 8px; grid-template-columns: repeat(3, 64px); } .lock-pad button { width: 64px; height: 64px; font-size: 1.5rem; } .lock-dots { margin-top: 14px; } .lock-logo { margin-bottom: 8px; width: 48px; height: 48px; } }
+
+.sec-note { font-size: var(--fs-small); color: var(--muted); line-height: 1.5; }
+.sec-status { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.sec-status svg { width: 20px; height: 20px; color: var(--go); flex: none; }
+.pinlen { display: flex; align-items: center; gap: 10px; font-size: var(--fs-small); color: var(--muted); }
+.pinlen .chips { grid-template-columns: repeat(3, 64px); }

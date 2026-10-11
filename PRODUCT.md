@@ -61,6 +61,7 @@ Erfolg heißt: Die App wird morgens geöffnet, weil sie in Sekunden eine verläs
   - Sicherung, Wiederherstellung und Löschen der Daten.
 - **Kalorien:** bevorzugt aus den Kiox-Daten über Strava, sonst geschätzt (Gewicht × MET × Dauer). Geschätzte Werte werden gekennzeichnet.
 - **Speicherung:** Alle Daten liegen lokal im Browser (localStorage). Es gibt keinen eigenen Server und keine Konten.
+- **App-Sperre:** Optional schützt eine PIN die lokalen Daten durch Verschlüsselung (kein Serverkonto, keine Einmalcodes). Sie greift beim Start und nach einer einstellbaren Zeit im Hintergrund. Face ID ist noch nicht umgesetzt, weil es sich ohne echtes iPhone nicht prüfen ließ.
 - **Kostenrahmen:** keine laufenden Kosten. Dienste müssen kostenlos nutzbar sein.
 - **Sprache:** Die Oberfläche ist auf Deutsch. Englisch soll später dazukommen, deshalb sollen Texte so angelegt werden, dass eine Übersetzung möglich bleibt. Zahlen und Daten werden im deutschen Format angezeigt.
 - **Offen:**

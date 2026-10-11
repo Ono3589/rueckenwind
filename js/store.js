@@ -43,6 +43,7 @@ export const DEFAULTS = {
     maxWind: 30,
     maxGust: 50,
   },
+  security: { autoLockMin: 1 }, // Minuten im Hintergrund, bis die App sich sperrt (0 = sofort)
   customPresets: [], // { id, label, rules } – selbst gespeicherte Radwetter-Profile
   car: {
     name: '',
@@ -108,6 +109,14 @@ export function save(state) {
     return true;
   } catch {
     return false;
+  }
+}
+
+export function clearPlain() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* egal */
   }
 }
 
