@@ -942,7 +942,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.8 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.8.1 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1198,7 +1198,13 @@ view.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (el && el.tagName !== 'INPUT' && actions[el.dataset.action]) {
     e.preventDefault();
-    actions[el.dataset.action](el);
+    // Asynchrone Aktionen dürfen nicht stumm scheitern: Fehler als Meldung zeigen
+    Promise.resolve()
+      .then(() => actions[el.dataset.action](el))
+      .catch((err) => {
+        hideLock();
+        toast(`Das hat nicht geklappt: ${err?.message || err}`);
+      });
     return;
   }
   const scroll = e.target.closest('[data-scroll]');

@@ -5,7 +5,15 @@ const esc = (s) =>
 
 const BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-6-6 6-6zM12.5 10l4 4M16.5 10l-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-const root = () => document.getElementById('lock');
+// Das Element gehört in index.html. Fehlt es (z. B. weil eine ältere Seite aus dem Zwischenspeicher kommt), legen wir es an.
+const root = () => {
+  let r = document.getElementById('lock');
+  if (!r) {
+    r = Object.assign(document.createElement('div'), { id: 'lock', className: 'lock', hidden: true });
+    document.body.append(r);
+  }
+  return r;
+};
 
 export function hideLock() {
   const r = root();

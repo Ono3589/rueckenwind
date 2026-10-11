@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Hülle aus dem Cache, Wetter & Strava immer frisch aus dem Netz.
-const VERSION = 'rueckenwind-v0.8.0';
+const VERSION = 'rueckenwind-v0.8.1';
 const SHELL = [
   './',
   './index.html',
@@ -52,7 +52,8 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return;
   // Netzwerk zuerst, damit Updates sofort ankommen; offline aus dem Cache
   e.respondWith(
-    fetch(e.request)
+    // 'no-cache' prüft bei jedem Aufruf beim Server nach, damit nie alte und neue Dateien gemischt werden
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));
