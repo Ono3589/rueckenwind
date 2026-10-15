@@ -15,7 +15,7 @@ VAPID_SUBJECT = "https://ono3589.github.io/rueckenwind/"
 
 [[kv_namespaces]]
 binding = "SUBS"
-id = "HIER_DIE_KV_ID_EINTRAGEN"
+id = "cc3eace6b04e418ab4e00ee833796adc"
 
 # Geheimnisse legst du NICHT in dieser Datei ab, sondern mit `npx wrangler secret put <NAME>`:
 #   VAPID_PUBLIC       öffentlicher Schlüssel (aus gen-vapid.mjs)

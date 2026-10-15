@@ -75,14 +75,12 @@ Die ausgegebene `id` in `wrangler.toml` bei `id = "HIER_DIE_KV_ID_EINTRAGEN"` ei
 
 ```bash
 npx wrangler@4 deploy                         # gibt die Adresse aus, z. B. https://rueckenwind-push.NAME.workers.dev
-node scripts/gen-vapid.mjs                    # druckt einen öffentlichen und einen privaten Schlüssel
-npx wrangler@4 secret put VAPID_PUBLIC        # öffentlichen Schlüssel einfügen
-npx wrangler@4 secret put VAPID_PRIVATE_JWK   # privaten Schlüssel (die Zeile mit { … }) einfügen
-openssl rand -hex 24                          # druckt ein zufälliges Token, kopieren
-npx wrangler@4 secret put API_TOKEN           # das Token einfügen
+node worker/scripts/setup-secrets.mjs         # erzeugt die Schlüssel und das Token und legt sie bei Cloudflare ab
 ```
 
-Der private Schlüssel und das Token sind geheim: nicht committen, nicht weitergeben. Nach `secret put` ist kein neues `deploy` nötig.
+Das Skript zeigt am Ende **nur das Token** an (einmal, bitte kopieren). Den privaten Schlüssel siehst du nie, du musst nichts einfügen. Er und das Token sind geheim: nicht committen, nicht weitergeben. Danach ist kein neues `deploy` nötig.
+
+Wichtig: Alle Befehle im Ordner `worker/` ausführen (die Eingabezeile endet auf `worker %`). In einem anderen Ordner findet wrangler die Konfiguration nicht.
 
 **In der App:** Einstellungen → Morgenmeldung. Adresse des Dienstes und Token eintragen, **Einschalten** tippen und die Nachfrage „Mitteilungen erlauben“ bestätigen. Danach **Test senden**: Die Meldung für heute sollte nach wenigen Sekunden erscheinen. Ab dann prüft der Dienst alle 15 Minuten und schickt einmal pro Arbeitstag nach der Wunschzeit. Ändern sich Strecke, Zeiten oder Schwellen, überträgt die App die neuen Werte von selbst.
 
