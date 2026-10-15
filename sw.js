@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Hülle aus dem Cache, Wetter & Strava immer frisch aus dem Netz.
-const VERSION = 'rueckenwind-v0.9.0';
+const VERSION = 'rueckenwind-v0.10.0';
 const SHELL = [
   './',
   './index.html',
@@ -15,6 +15,8 @@ const SHELL = [
   './js/vault.js',
   './js/lock.js',
   './js/health.js',
+  './js/push.js',
+  './js/messages.js',
   './icons/icon.svg',
   './icons/icon-180.png',
   './icons/icon-192.png',
@@ -61,5 +63,44 @@ self.addEventListener('fetch', (e) => {
         return res;
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('./index.html'))),
+  );
+});
+
+// Morgenmeldung vom Push-Dienst anzeigen. iOS verlangt, dass jede Push-Nachricht auch eine sichtbare Meldung auslöst.
+self.addEventListener('push', (e) => {
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch {
+    data = { body: e.data ? e.data.text() : '' };
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'Rückenwind', {
+      body: data.body || '',
+      tag: data.tag || 'morgen',
+      icon: './icons/icon-192.png',
+      data: { url: data.url || './#heute' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || './#heute', self.registration.scope).href;
+  e.waitUntil(
+    (async () => {
+      const open = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const mine = open.find((c) => c.url.startsWith(self.registration.scope));
+      if (mine) {
+        await mine.focus();
+        try {
+          await mine.navigate(target);
+        } catch {
+          /* Fenster ist schon richtig */
+        }
+        return;
+      }
+      await self.clients.openWindow(target);
+    })(),
   );
 });

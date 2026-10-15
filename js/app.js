@@ -2,9 +2,11 @@ import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } fr
 import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
 import { askPin, hideLock, showMessage } from './lock.js';
 import { parseHealthText } from './health.js';
+import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush } from './push.js';
+import { TITLES } from './messages.js';
 import { midpoint, distanceM, searchAddress, currentPosition, fetchBikeRoute } from './geo.js';
 import { mapThumb, simplify } from './map.js';
-import { fetchForecast, pickTargetDate, assessDay, fmtMin, tripMinutes } from './weather.js';
+import { fetchForecast, dayTarget, commuteDone, assessDay, fmtMin, tripMinutes } from './weather.js';
 import { FUEL, carCostPerKm, bikeCostPerKm, bikeRangeKm, estimateKcal, summarize } from './costs.js';
 import * as strava from './strava.js';
 
@@ -13,7 +15,11 @@ let locked = hasVault();
 let session = null; // nur während die App entsperrt ist
 let state = locked ? structuredClone(DEFAULTS) : load();
 const view = document.getElementById('view');
-const persist = () => (session ? session.save(state) : save(state));
+const persist = () => {
+  const r = session ? session.save(state) : save(state);
+  schedulePushSync();
+  return r;
+};
 
 // ---------- Formatierung ----------
 
@@ -306,6 +312,10 @@ function onboarding() {
   <a class="btn primary wide" href="#einstellungen">Arbeitsweg festlegen</a>`;
 }
 
+// Heute oder Morgen: nur diese zwei Tage. Nach dem Rückweg zeigt die App von selbst „Morgen“.
+let dayOffset = null;
+let dayOffsetFor = '';
+
 function renderToday() {
   const key = locKey();
   if (!key) {
@@ -322,7 +332,11 @@ function renderToday() {
   }
   ensureForecast(); // im Hintergrund auffrischen, wenn älter als 30 Minuten
 
-  const target = pickTargetDate(forecast, state.route);
+  if (dayOffsetFor !== todayISO()) {
+    dayOffsetFor = todayISO();
+    dayOffset = commuteDone(state.route) ? 1 : 0;
+  }
+  const target = dayTarget(forecast, dayOffset);
   const day = assessDay(forecast, state.route, state.rules, target);
   const rainy = [day.hin, day.rueck].some((t) => t && (t.rainProb >= state.rules.maxRainProb || t.precip > state.rules.maxPrecip));
   const isWorkday = state.route.workdays.includes(new Date(`${target.date}T12:00:00`).getDay());
@@ -332,9 +346,14 @@ function renderToday() {
 
   view.innerHTML = `
   <header class="top">
-    <p class="date">${fmt.dayLong(target.date)}${target.isToday ? '' : '<span>nächster Arbeitstag</span>'}</p>
+    <p class="date">${fmt.dayLong(target.date)}${isWorkday ? '' : '<span>kein Arbeitstag</span>'}</p>
     ${s ? `<span class="streak" title="${s} Arbeitstage in Folge mit dem Rad">${I.flame}${s}</span>` : ''}
   </header>
+
+  <div class="segmented two" role="tablist" aria-label="Tag">
+    <button role="tab" data-action="day" data-d="0" aria-selected="${dayOffset === 0}">Heute</button>
+    <button role="tab" data-action="day" data-d="1" aria-selected="${dayOffset === 1}">Morgen</button>
+  </div>
 
   <section class="hero ${day.status}">
     ${horizon(day.status, day.score, rainy)}
@@ -685,7 +704,7 @@ function distanceBlock() {
 }
 
 const editingPlace = { home: false, work: false };
-const moreOpen = { car: false, fine: false, strava: false, rules: false, health: false, paste: false };
+const moreOpen = { car: false, fine: false, strava: false, rules: false, health: false, paste: false, notify: false, msgs: false };
 
 const more = (id, title, hint, body) => `
     <details class="more" data-more="${id}" ${moreOpen[id] ? 'open' : ''}>
@@ -906,6 +925,8 @@ function renderSettings() {
     </div>
   </div></section>
 
+  ${notifyGroup()}
+
   <section class="group"><h2>Mein Auto</h2><div class="card settings">
     <label class="field">Antrieb<span class="input"><select data-path="car.fuel" data-rerender>${Object.entries(FUEL).map(([k, f]) => `<option value="${k}" ${k === state.car.fuel ? 'selected' : ''}>${f.label}</option>`).join('')}</select></span></label>
     <div class="two">
@@ -1012,7 +1033,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.9 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.10 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1156,6 +1177,13 @@ function setPlace(which, place) {
 const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
+  'notify-enable': () => enableNotify(),
+  'notify-disable': () => disableNotify(),
+  'notify-test': () => testNotify(),
+  day: (el) => {
+    dayOffset = +el.dataset.d;
+    renderToday();
+  },
   'health-paste': async () => {
     let text = '';
     try {
@@ -1310,13 +1338,17 @@ view.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (el && el.tagName !== 'INPUT' && actions[el.dataset.action]) {
     e.preventDefault();
-    // Asynchrone Aktionen dürfen nicht stumm scheitern: Fehler als Meldung zeigen
-    Promise.resolve()
-      .then(() => actions[el.dataset.action](el))
-      .catch((err) => {
-        hideLock();
-        toast(`Das hat nicht geklappt: ${err?.message || err}`);
-      });
+    // Die Aktion läuft sofort im Tipp. Nur so erlaubt iOS Nachfragen wie „Mitteilungen erlauben“.
+    // Fehler asynchroner Aktionen dürfen nicht stumm bleiben.
+    const fail = (err) => {
+      hideLock();
+      toast(`Das hat nicht geklappt: ${err?.message || err}`);
+    };
+    try {
+      Promise.resolve(actions[el.dataset.action](el)).catch(fail);
+    } catch (err) {
+      fail(err);
+    }
     return;
   }
   const scroll = e.target.closest('[data-scroll]');
@@ -1369,6 +1401,109 @@ async function importJson(input) {
     hideLock();
     toast('Datei konnte nicht gelesen werden');
   }
+}
+
+// ---------- Morgenmeldung ----------
+
+let lastPushConfig = '';
+let pushTimer = 0;
+let notifyBusy = false;
+
+// Ändern sich Strecke, Zeiten oder Schwellen, bekommt der Push-Dienst die neuen Werte (gebündelt, nach kurzer Ruhe)
+function schedulePushSync() {
+  if (!state.notify?.enabled || locked) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    const config = buildNotifyConfig(state);
+    const base = normalizeUrl(state.notify.url);
+    if (!config || !base) return;
+    const sig = JSON.stringify(config);
+    if (sig === lastPushConfig) return;
+    try {
+      await syncPush({ url: base, token: state.notify.token, config });
+      lastPushConfig = sig;
+    } catch (e) {
+      console.warn('Abgleich mit dem Push-Dienst fehlgeschlagen:', e.message);
+    }
+  }, 2500);
+}
+
+async function enableNotify() {
+  // Gleich als Erstes: Die Nachfrage „Mitteilungen erlauben“ darf nur direkt nach dem Tipp kommen
+  const n = state.notify;
+  const support = pushSupport();
+  if (!support.ok) return toast(support.reason);
+  const base = normalizeUrl(n.url);
+  if (!base) return toast('Trag die https-Adresse deines Push-Dienstes ein.');
+  if (!n.token.trim()) return toast('Trag das Token deines Push-Dienstes ein.');
+  const config = buildNotifyConfig(state);
+  if (!config) return toast('Lege zuerst Zuhause und Arbeit fest.');
+  notifyBusy = true;
+  renderSettings();
+  try {
+    await enablePush({ url: base, token: n.token.trim(), config });
+    n.url = base;
+    n.token = n.token.trim();
+    n.enabled = true;
+    lastPushConfig = JSON.stringify(config);
+    persist();
+    toast('Morgenmeldung ist an. Tippe auf „Test senden“, um sie zu prüfen.');
+  } finally {
+    notifyBusy = false;
+    renderSettings();
+  }
+}
+
+async function disableNotify() {
+  const base = normalizeUrl(state.notify.url);
+  await disablePush({ url: base, token: state.notify.token });
+  state.notify.enabled = false;
+  lastPushConfig = '';
+  persist();
+  renderSettings();
+  toast('Morgenmeldung ist aus');
+}
+
+async function testNotify() {
+  notifyBusy = true;
+  renderSettings();
+  try {
+    const r = await testPush({ url: normalizeUrl(state.notify.url), token: state.notify.token });
+    toast(`Gesendet: „${r.title}“. Sie sollte gleich erscheinen.`);
+  } finally {
+    notifyBusy = false;
+    renderSettings();
+  }
+}
+
+function notifyGroup() {
+  const n = state.notify;
+  const support = pushSupport();
+  const samples = ['go', 'caution', 'no'].map((k) => `<p class="sec-note"><strong>${{ go: 'Passt', caution: 'Machbar', no: 'Passt nicht' }[k]}</strong><br>${TITLES[k].map(esc).join(' · ')}</p>`).join('');
+  const steps = `<ol class="steps">
+      <li>Lege ein kostenloses Konto bei <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">Cloudflare</a> an.</li>
+      <li>Öffne im Projektordner das Terminal und folge der Anleitung im Abschnitt „Morgenmeldung“ der Datei <code>README.md</code>. Am Ende erhältst du eine Adresse wie <code>https://rueckenwind-push.name.workers.dev</code> und ein Token.</li>
+      <li>Trage beides hier ein und tippe auf „Einschalten“.</li>
+    </ol>
+    <p class="sec-note">Der Dienst speichert nur die Push-Adresse deines Geräts, den Mittelpunkt deiner Strecke (auf etwa 1 km gerundet), den Fahrtkurs, deine Zeiten und Schwellen. Deine genauen Adressen bleiben auf dem Gerät.</p>`;
+  return `
+  <section class="group" id="morgen"><h2>Morgenmeldung</h2><div class="card settings">
+    ${
+      n.enabled
+        ? `<p class="sec-status">${I.check}Aktiv, jeden Arbeitstag ab ${esc(n.time)} Uhr</p>
+          <label class="field">Uhrzeit<span class="input"><input type="time" data-path="notify.time" value="${esc(n.time)}"></span></label>
+          <div class="actions"><button class="btn primary" data-action="notify-test" ${notifyBusy ? 'disabled' : ''}>Test senden</button><button class="btn ghost" data-action="notify-disable" ${notifyBusy ? 'disabled' : ''}>Ausschalten</button></div>`
+        : `<p class="sec-note">Jeden Arbeitstag eine Meldung, ob das Rad heute drankommt, etwa „Jetzt losfahren!“ oder „Nimm lieber das Auto“. Dafür läuft ein kleiner eigener Dienst bei Cloudflare, kostenlos und einmalig einzurichten.</p>
+          ${support.ok ? '' : `<p class="sec-note warn">${esc(support.reason)}</p>`}
+          <label class="field">Uhrzeit<span class="input"><input type="time" data-path="notify.time" value="${esc(n.time)}"></span></label>
+          <label class="field">Adresse deines Push-Dienstes<span class="input"><input type="url" inputmode="url" data-path="notify.url" value="${esc(n.url)}" placeholder="https://rueckenwind-push.name.workers.dev" autocomplete="off" autocapitalize="off"></span></label>
+          <label class="field">Token<span class="input"><input type="password" data-path="notify.token" value="${esc(n.token)}" autocomplete="off"></span></label>
+          <button class="btn primary" data-action="notify-enable" ${notifyBusy ? 'disabled' : ''}>${notifyBusy ? 'Einen Moment …' : 'Einschalten'}</button>`
+    }
+    ${more('notify', 'Dienst einrichten', 'einmalig, etwa 15 Minuten', steps)}
+    ${more('msgs', 'Meldungen ansehen', 'so klingen sie, täglich wechselnd', samples)}
+  </div></section>
+`;
 }
 
 // ---------- App-Sperre ----------
@@ -1557,6 +1692,7 @@ async function handleOAuthReturn() {
 
 function boot() {
   render();
+  schedulePushSync();
   handleOAuthReturn();
   if (state.route.home && state.route.work && ((!state.route.distanceManual && !state.route.distanceSource) || !state.route.path?.length)) updateRouteDistance();
 }

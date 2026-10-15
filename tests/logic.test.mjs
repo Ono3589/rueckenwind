@@ -1,7 +1,7 @@
 // node --test tests/
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { windRelation, assessTrip, pickTargetDate } from '../js/weather.js';
+import { windRelation, assessTrip, dayTarget, commuteDone, assessDay } from '../js/weather.js';
 import { carCostPerKm, bikeCostPerKm, summarize } from '../js/costs.js';
 import { DEFAULTS } from '../js/store.js';
 import { bearing, distanceM } from '../js/geo.js';
@@ -55,13 +55,26 @@ test('Fahrt über die Stundengrenze nimmt beide Stunden mit', () => {
   assert.equal(t.sev, 2);
 });
 
-test('Nach dem Rückweg wird der nächste Arbeitstag bewertet', () => {
-  const fc = { daily: { time: ['2026-10-09', '2026-10-10', '2026-10-11', '2026-10-12'] } }; // Fr, Sa, So, Mo
-  const route = DEFAULTS.route;
-  const friEvening = new Date('2026-10-09T19:00:00');
-  assert.equal(pickTargetDate(fc, route, friEvening).date, '2026-10-12');
-  const friMorning = new Date('2026-10-09T06:30:00');
-  assert.equal(pickTargetDate(fc, route, friMorning).date, '2026-10-09');
+test('Heute und Morgen: genau diese zwei Tage, nicht mehr', () => {
+  const fc = { daily: { time: ['2026-10-09', '2026-10-10', '2026-10-11'] } }; // Fr, Sa, So
+  assert.deepEqual(dayTarget(fc, 0), { date: '2026-10-09', index: 0, isToday: true });
+  assert.deepEqual(dayTarget(fc, 1), { date: '2026-10-10', index: 1, isToday: false }); // morgen = Samstag, kein Überspringen
+  assert.equal(dayTarget(fc, 99).date, '2026-10-11'); // nie über die Vorhersage hinaus
+});
+
+test('Nach dem Rückweg ist „Morgen“ die Voreinstellung', () => {
+  const route = DEFAULTS.route; // Rückweg 17:00 + ca. 27 min
+  assert.equal(commuteDone(route, new Date('2026-10-09T19:00:00')), true);
+  assert.equal(commuteDone(route, new Date('2026-10-09T06:30:00')), false);
+  assert.equal(commuteDone(route, new Date('2026-10-09T17:20:00')), false);
+});
+
+test('Ein fertiger Kurs ersetzt Zuhause/Arbeit (für den Push-Dienst)', () => {
+  const fc = fakeForecast('2026-10-12');
+  const route = { ...DEFAULTS.route, bearing: 90 };
+  const day = assessDay(fc, route, rules, { date: '2026-10-12', index: 0, isToday: true });
+  assert.equal(day.hin.rel.kind, 'rueck'); // Fahrt nach Osten, Wind aus Westen
+  assert.equal(day.rueck.rel.kind, 'gegen');
 });
 
 test('Kosten pro km aus Fahrzeugdaten', () => {

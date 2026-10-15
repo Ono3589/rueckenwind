@@ -42,12 +42,13 @@ Erfolg heißt: Die App wird morgens geöffnet, weil sie in Sekunden eine verläs
 
 ## Capabilities and Constraints
 
+- **Morgenmeldung:** Zur Wunschzeit (Standard 6:30 Uhr) an Arbeitstagen eine Push-Nachricht, etwa „Jetzt losfahren!“ oder „Nimm lieber das Auto“, mit täglich wechselnder Überschrift und dem Grund. Sie läuft über einen eigenen, kostenlosen Cloudflare Worker (`worker/`), weil morgens bei geschlossener App nur ein Server senden kann. Der Dienst erhält nur die Push-Adresse, den auf etwa 1 km gerundeten Streckenmittelpunkt, den Fahrtkurs, Zeiten und Schwellen. Voraussetzung auf dem iPhone: zum Home-Bildschirm hinzugefügte App, iOS 16.4 oder neuer. Der echte Versand ist noch nicht auf dem iPhone geprüft.
 - **Heute:**
   - Urteil „Ja, rollen!“, „Machbar.“ oder „Heute lieber nicht.“;
   - getrennte Bewertung von Hin- und Rückweg;
   - Ausrüstungstipps;
   - Regen im Tagesverlauf;
-  - nach Feierabend oder am Wochenende zeigt die App den nächsten Arbeitstag.
+  - ein Umschalter „Heute / Morgen“ zeigt wahlweise den nächsten Tag (mehr nicht); nach dem Rückweg ist „Morgen“ voreingestellt.
 - **Fahrten:** manuell eintragen, mit einem Tipp als gefahren markieren, Abgleich mit Strava, nach Wochen gruppiert.
 - **Bilanz:** Ersparnis, km, kcal, CO₂ und Serie je Woche, Monat, Jahr oder gesamt. Dazu ein 12-Wochen-Verlauf, Kosten pro km für Auto und E-Bike, die Entfernungspauschale und ein CSV-Export.
 - **Einstellungen:**

@@ -34,16 +34,16 @@ export function tripMinutes(route) {
   return Math.max(10, Math.round((route.distanceKm / (route.avgSpeed || 20)) * 60));
 }
 
-// Welcher Tag soll bewertet werden? Heute, solange der Rückweg noch bevorsteht – sonst der nächste Arbeitstag.
-export function pickTargetDate(forecast, route, now = new Date()) {
-  const days = forecast.daily.time; // 'YYYY-MM-DD' in Ortszeit
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const doneToday = nowMin > toMin(route.departRueck) + tripMinutes(route);
-  for (let i = doneToday ? 1 : 0; i < days.length; i++) {
-    const dow = new Date(`${days[i]}T12:00:00`).getDay();
-    if (route.workdays.includes(dow)) return { date: days[i], index: i, isToday: i === 0 };
-  }
-  return { date: days[doneToday ? 1 : 0], index: doneToday ? 1 : 0, isToday: !doneToday };
+// Der Tag, der angezeigt wird: offset 0 = heute, 1 = morgen (Ortszeit der Vorhersage).
+export function dayTarget(forecast, offset = 0) {
+  const days = forecast.daily.time;
+  const index = Math.min(Math.max(offset, 0), days.length - 1);
+  return { date: days[index], index, isToday: index === 0 };
+}
+
+// Ist der Rückweg heute schon vorbei? Dann ist „Morgen“ die sinnvollere Voreinstellung.
+export function commuteDone(route, now = new Date()) {
+  return now.getHours() * 60 + now.getMinutes() > toMin(route.departRueck) + tripMinutes(route);
 }
 
 function hourIndex(forecast, date, hour) {
@@ -113,7 +113,7 @@ export function assessTrip(forecast, date, departHHMM, minutes, travelBearing, r
 
 export function assessDay(forecast, route, rules, target) {
   const minutes = tripMinutes(route);
-  const b = route.home && route.work ? bearingOf(route) : null;
+  const b = route.bearing ?? (route.home && route.work ? bearingOf(route) : null); // bearing: fertiger Kurs, z. B. vom Push-Dienst
   const hin = assessTrip(forecast, target.date, route.departHin, minutes, b, rules);
   const rueck = assessTrip(forecast, target.date, route.departRueck, minutes, b == null ? null : (b + 180) % 360, rules);
   const trips = [hin, rueck].filter(Boolean);

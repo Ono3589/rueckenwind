@@ -55,6 +55,44 @@ Der Kurzbefehl wurde ohne iPhone entworfen und ist **ungetestet**. Die Bezeichnu
 
 Die Strava-Schnittstelle ist nur mit einem Strava-Abonnement nutzbar. Wer eines hat, kann in den Einstellungen unter Kiox-Fahrten → Strava eine eigene API-App eintragen (Authorization Callback Domain: `<dein-name>.github.io`). Ohne Abo bleibt dieser Teil ungenutzt.
 
+## Morgenmeldung (Push-Nachricht aufs iPhone)
+
+Jeden Arbeitstag zur Wunschzeit kommt eine Meldung, zum Beispiel **„Jetzt losfahren!“** (mit dem Grund, etwa „Trocken, 12 °C, Rückenwind am Morgen“) oder **„Nimm lieber das Auto“**. Die Überschrift wechselt täglich aus einer Reihe von Varianten (`js/messages.js`), nie dieselbe an zwei Tagen hintereinander.
+
+**Warum ein eigener Dienst?** Eine Webseite kann nicht von allein aufwachen. Damit morgens etwas ankommt, wenn die App zu ist, muss ein Server die Meldung schicken. Dafür dient ein winziger Cloudflare Worker in `worker/`. Er kostet nichts (kostenloser Tarif) und läuft in deinem eigenen Konto. Er speichert nur die Push-Adresse deines Geräts, den Mittelpunkt der Strecke (auf etwa 1 km gerundet), den Fahrtkurs, deine Zeiten und Schwellen. Deine genauen Adressen gehen nie dorthin.
+
+**Voraussetzungen:** iPhone mit iOS 16.4 oder neuer, die App ist **zum Home-Bildschirm hinzugefügt** und wird von dort geöffnet, ein kostenloses [Cloudflare-Konto](https://dash.cloudflare.com/sign-up), Node.js auf dem Mac.
+
+**Einmalige Einrichtung** (im Ordner `worker/`):
+
+```bash
+cd worker
+npx wrangler@4 login                          # Browser öffnet sich, bei Cloudflare anmelden
+npx wrangler@4 kv namespace create SUBS       # gibt eine "id" aus
+```
+
+Die ausgegebene `id` in `wrangler.toml` bei `id = "HIER_DIE_KV_ID_EINTRAGEN"` eintragen. Bei `ALLOWED_ORIGINS` und `VAPID_SUBJECT` steht schon deine GitHub-Pages-Adresse.
+
+```bash
+npx wrangler@4 deploy                         # gibt die Adresse aus, z. B. https://rueckenwind-push.NAME.workers.dev
+node scripts/gen-vapid.mjs                    # druckt einen öffentlichen und einen privaten Schlüssel
+npx wrangler@4 secret put VAPID_PUBLIC        # öffentlichen Schlüssel einfügen
+npx wrangler@4 secret put VAPID_PRIVATE_JWK   # privaten Schlüssel (die Zeile mit { … }) einfügen
+openssl rand -hex 24                          # druckt ein zufälliges Token, kopieren
+npx wrangler@4 secret put API_TOKEN           # das Token einfügen
+```
+
+Der private Schlüssel und das Token sind geheim: nicht committen, nicht weitergeben. Nach `secret put` ist kein neues `deploy` nötig.
+
+**In der App:** Einstellungen → Morgenmeldung. Adresse des Dienstes und Token eintragen, **Einschalten** tippen und die Nachfrage „Mitteilungen erlauben“ bestätigen. Danach **Test senden**: Die Meldung für heute sollte nach wenigen Sekunden erscheinen. Ab dann prüft der Dienst alle 15 Minuten und schickt einmal pro Arbeitstag nach der Wunschzeit. Ändern sich Strecke, Zeiten oder Schwellen, überträgt die App die neuen Werte von selbst.
+
+**Zum Prüfen und Abstellen**
+- Läuft der Dienst? `https://…workers.dev/health` im Browser öffnen, es kommt `{"ok":true}`.
+- Ausschalten: in der App „Ausschalten“. Das meldet das Gerät ab und löscht die gespeicherten Werte. Den ganzen Dienst entfernst du mit `npx wrangler@4 delete`.
+- Kommt nach „Test senden“ nichts an, prüfe in iOS unter Einstellungen → Mitteilungen → Rückenwind, ob Mitteilungen erlaubt sind, und dass kein Fokus-Modus sie unterdrückt.
+
+**Stand der Prüfung:** Verschlüsselung (gegen die Testwerte aus RFC 8291), Absenderausweis, Zeitplan, Zeitzone, Wiederholung bei Fehlern und die Anzeige im Service Worker sind automatisch getestet (`tests/webpush.test.mjs`, `tests/worker.test.mjs`, `tests/sw.test.mjs`). Der echte Versand über Apple und die Anzeige auf dem iPhone sind **nicht** getestet, das geht nur mit deinem Gerät.
+
 ## Aufbau
 
 | Datei | Inhalt |
@@ -69,12 +107,13 @@ Die Strava-Schnittstelle ist nur mit einem Strava-Abonnement nutzbar. Wer eines 
 | `js/vault.js` | App-Sperre: Verschlüsselung der Daten mit einem PIN-Schlüssel |
 | `js/lock.js` | Sperrbildschirm mit Zahlenfeld |
 | `js/app.js` | Oberfläche: Heute, Fahrten, Bilanz, Einstellungen |
-| `sw.js` | Offline-Cache der App-Hülle |
+| `js/push.js` | Anmeldung für die Morgenmeldung beim eigenen Push-Dienst |
+| `js/messages.js` | Die Reihe der Morgenmeldungen und ihre Auswahl |
+| `worker/` | Cloudflare Worker: prüft morgens das Wetter und schickt die Push-Nachricht |
+| `sw.js` | Offline-Cache der App-Hülle, zeigt Push-Nachrichten an |
 
 ## Ideen für v0.2
 
-- **Morgen-Push um 6:30 Uhr:** ein Cloudflare Worker mit Cron-Trigger und Web Push (VAPID). Das ist kostenlos, braucht aber ein Cloudflare-Konto.
-  Alternative ohne Server: eine iOS-Kurzbefehl-Automation, die die App öffnet.
 - Akku-Check am Vorabend (Reichweite gegen Strecke und Gegenwind)
 - Wartungserinnerungen nach Kilometern (Kette, Bremsbeläge, Inspektion)
 - Abzeichen und Wochenziele, Team-Challenge mit Kollegen
