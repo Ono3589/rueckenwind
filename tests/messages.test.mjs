@@ -1,7 +1,7 @@
 // node --test tests/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNotification, TITLES } from '../js/messages.js';
+import { buildNotification, buildEveningNotification, TITLES, EVENING } from '../js/messages.js';
 
 const day = (status, extra = {}) => ({ status, reason: 'Trocken, 12 °C.', gear: [], ...extra });
 
@@ -49,4 +49,19 @@ test('Rückenwind auf dem Hinweg erweitert die Auswahl', () => {
     titles.add(buildNotification(day('go', { hin: { rel: { kind: 'rueck' } } }), date).title);
   }
   assert.ok([...titles].some((t) => !TITLES.go.includes(t)));
+});
+
+test('Die Abendfrage hat Varianten je Wetter und wiederholt sich nie direkt', () => {
+  for (const status of ['go', 'caution', 'no']) {
+    assert.ok(EVENING[status].length >= 4, status);
+    let prev = null;
+    for (let d = 1; d <= 60; d++) {
+      const date = new Date(Date.UTC(2026, 9, d)).toISOString().slice(0, 10);
+      const m = buildEveningNotification({ status }, date);
+      assert.ok(m.title && m.body);
+      assert.notEqual(m.title, prev, `${status} ${date}`);
+      prev = m.title;
+    }
+  }
+  assert.deepEqual(buildEveningNotification({ status: 'go' }, '2026-10-15'), buildEveningNotification({ status: 'go' }, '2026-10-15'));
 });

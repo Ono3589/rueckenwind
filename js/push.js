@@ -20,6 +20,8 @@ export function buildNotifyConfig(state) {
     departRueck: state.route.departRueck,
     workdays: state.route.workdays,
     notifyAt: state.notify.time,
+    eveningOn: state.notify.eveningOn !== false,
+    eveningAt: state.notify.eveningAt || '18:30',
     rules: {
       minTemp: state.rules.minTemp,
       maxTemp: state.rules.maxTemp,
@@ -109,8 +111,15 @@ export async function disablePush({ url, token }) {
   await sub.unsubscribe();
 }
 
-export async function testPush({ url, token }) {
+export async function testPush({ url, token, kind = 'morgen' }) {
   const endpoint = await currentEndpoint();
   if (!endpoint) throw new Error('Dieses Gerät ist nicht angemeldet.');
-  return call(url, token, '/test', { endpoint });
+  return call(url, token, '/test', { endpoint, kind });
+}
+
+// Meldet dem Dienst, ob der heutige Tag erledigt ist (Fahrten eingetragen oder beantwortet). Dann entfällt die Abendfrage.
+export async function reportDay({ url, token, date, complete }) {
+  const endpoint = await currentEndpoint();
+  if (!endpoint) return;
+  await call(url, token, '/logged', { endpoint, date, complete });
 }

@@ -43,7 +43,7 @@ export const DEFAULTS = {
     maxWind: 30,
     maxGust: 50,
   },
-  notify: { enabled: false, time: '06:30', url: '', token: '' }, // Morgenmeldung (Push-Dienst)
+  notify: { enabled: false, time: '06:30', eveningOn: true, eveningAt: '18:30', answeredDate: '', url: '', token: '' }, // Morgenmeldung (Push-Dienst)
   security: { autoLockMin: 1 }, // Minuten im Hintergrund, bis die App sich sperrt (0 = sofort)
   customPresets: [], // { id, label, rules } – selbst gespeicherte Radwetter-Profile
   car: {

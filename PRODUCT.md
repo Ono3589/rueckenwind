@@ -42,6 +42,7 @@ Erfolg heißt: Die App wird morgens geöffnet, weil sie in Sekunden eine verläs
 
 ## Capabilities and Constraints
 
+- **Abendfrage:** Optional (Standard 18:30 Uhr) fragt eine zweite Push-Nachricht, ob der Nutzer gefahren ist. Der Text passt zum Wetter des Tages. Tippen öffnet die App mit den Antworten Hin und zurück, nur Hinweg, nur Rückweg, Nein. Ist der Tag schon erledigt, entfällt die Frage.
 - **Morgenmeldung:** Zur Wunschzeit (Standard 6:30 Uhr) an Arbeitstagen eine Push-Nachricht, etwa „Jetzt losfahren!“ oder „Nimm lieber das Auto“, mit täglich wechselnder Überschrift und dem Grund. Sie läuft über einen eigenen, kostenlosen Cloudflare Worker (`worker/`), weil morgens bei geschlossener App nur ein Server senden kann. Der Dienst erhält nur die Push-Adresse, den auf etwa 1 km gerundeten Streckenmittelpunkt, den Fahrtkurs, Zeiten und Schwellen. Voraussetzung auf dem iPhone: zum Home-Bildschirm hinzugefügte App, iOS 16.4 oder neuer. Der echte Versand ist noch nicht auf dem iPhone geprüft.
 - **Heute:**
   - Urteil „Ja, rollen!“, „Machbar.“ oder „Heute lieber nicht.“;

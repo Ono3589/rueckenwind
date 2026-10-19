@@ -553,3 +553,13 @@ code { font-size: 13px; padding: 1px 6px; border-radius: 6px; background: var(--
 .btn:disabled { opacity: 0.45; cursor: default; }
 
 .sec-note.warn { color: var(--accent-ink); }
+
+/* ---------- Abendfrage ---------- */
+
+.ask { display: flex; flex-direction: column; gap: 4px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ask h2 { font-family: var(--font-display); font-size: 1.25rem; letter-spacing: -0.02em; }
+.ask p { font-size: var(--fs-small); }
+.ask-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.ask-buttons .wide { grid-column: 1 / -1; min-height: 48px; font-size: 16px; }
+.check { display: flex; align-items: center; gap: 12px; font-size: 15px; cursor: pointer; }
+.check input { width: 22px; height: 22px; flex: none; }

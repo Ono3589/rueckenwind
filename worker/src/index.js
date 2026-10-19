@@ -3,7 +3,7 @@
 // deine Zeiten und Wetter-Schwellen. Deine genauen Adressen kennt er nicht.
 
 import { fetchForecast, assessDay } from '../../js/weather.js';
-import { buildNotification } from '../../js/messages.js';
+import { buildNotification, buildEveningNotification } from '../../js/messages.js';
 import { sendPush } from './webpush.js';
 
 const PREFIX = 'sub:';
@@ -34,6 +34,8 @@ export function validConfig(c) {
       isTime(c.departHin) &&
       isTime(c.departRueck) &&
       isTime(c.notifyAt) &&
+      (c.eveningAt === undefined || isTime(c.eveningAt)) &&
+      (c.eveningOn === undefined || typeof c.eveningOn === 'boolean') &&
       Array.isArray(c.workdays) &&
       c.workdays.length <= 7 &&
       c.workdays.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) &&
@@ -88,20 +90,22 @@ const vapidFrom = (env) => ({ subject: env.VAPID_SUBJECT, publicKey: env.VAPID_P
 
 // ---------- Meldung berechnen und senden ----------
 
-export async function buildMessage(config, now = new Date(), forecastFor = fetchForecast) {
+export async function buildMessage(config, now = new Date(), forecastFor = fetchForecast, kind = 'morgen') {
   const local = localParts(now, config.tz);
   const forecast = await forecastFor(config.mid);
   const index = forecast.daily.time.indexOf(local.date);
   if (index < 0) throw new Error('Vorhersage enthält den heutigen Tag nicht');
   const route = { departHin: config.departHin, departRueck: config.departRueck, distanceKm: config.distanceKm, avgSpeed: config.avgSpeed, workdays: config.workdays, bearing: config.bearing };
   const day = assessDay(forecast, route, config.rules, { date: local.date, index, isToday: index === 0 });
-  return { ...buildNotification(day, local.date), status: day.status, date: local.date };
+  const text = kind === 'abend' ? buildEveningNotification(day, local.date) : buildNotification(day, local.date);
+  return { ...text, status: day.status, date: local.date, kind };
 }
 
 async function deliver(env, record, message) {
+  const evening = message.kind === 'abend';
   return sendPush(
     record.subscription,
-    { title: message.title, body: message.body, tag: 'morgen', url: './#heute' },
+    { title: message.title, body: message.body, tag: evening ? 'abend' : 'morgen', url: evening ? './#frage' : './#heute' },
     vapidFrom(env),
     { ttl: 4 * 3600, fetchImpl: env.fetchImpl ?? fetch },
   );
@@ -117,26 +121,34 @@ export async function runSchedule(env, now = new Date(), forecastFor = fetchFore
   };
   const { keys } = await env.SUBS.list({ prefix: PREFIX });
   for (const { name } of keys) {
-    const record = await env.SUBS.get(name, 'json');
+    let record = await env.SUBS.get(name, 'json');
     if (!record || !validConfig(record.config)) continue;
     const c = record.config;
     const local = localParts(now, c.tz);
-    const due = c.workdays.includes(local.dow) && local.minutes >= toMin(c.notifyAt) && local.minutes < toMin(c.notifyAt) + WINDOW_MIN && record.lastSent !== local.date;
-    if (!due) continue;
-    try {
-      const message = await buildMessage(c, now, cached);
-      const res = await deliver(env, record, message);
-      if (res.status === 404 || res.status === 410) {
-        await env.SUBS.delete(name); // Gerät hat sich abgemeldet oder die Adresse ist abgelaufen
-        results.push({ name, sent: false, gone: true });
-      } else if (res.ok) {
-        await env.SUBS.put(name, JSON.stringify({ ...record, lastSent: local.date }));
-        results.push({ name, sent: true, status: message.status });
-      } else {
-        results.push({ name, sent: false, httpStatus: res.status }); // beim nächsten Lauf erneut
+    const inWindow = (at) => c.workdays.includes(local.dow) && local.minutes >= toMin(at) && local.minutes < toMin(at) + WINDOW_MIN;
+    const due = [];
+    if (inWindow(c.notifyAt) && record.lastSent !== local.date) due.push('morgen');
+    // Abends nur fragen, wenn der Tag nicht schon erledigt ist (die App meldet über /logged, dass alles eingetragen oder beantwortet ist)
+    if (c.eveningOn === true && inWindow(c.eveningAt ?? '18:30') && record.lastEvening !== local.date && record.completeFor !== local.date) due.push('abend');
+
+    for (const kind of due) {
+      try {
+        const message = await buildMessage(c, now, cached, kind);
+        const res = await deliver(env, record, message);
+        if (res.status === 404 || res.status === 410) {
+          await env.SUBS.delete(name); // Gerät hat sich abgemeldet oder die Adresse ist abgelaufen
+          results.push({ name, kind, sent: false, gone: true });
+          break;
+        } else if (res.ok) {
+          record = { ...record, [kind === 'abend' ? 'lastEvening' : 'lastSent']: local.date };
+          await env.SUBS.put(name, JSON.stringify(record));
+          results.push({ name, kind, sent: true, status: message.status });
+        } else {
+          results.push({ name, kind, sent: false, httpStatus: res.status }); // beim nächsten Lauf erneut
+        }
+      } catch (e) {
+        results.push({ name, kind, sent: false, error: String(e?.message ?? e) });
       }
-    } catch (e) {
-      results.push({ name, sent: false, error: String(e?.message ?? e) });
     }
   }
   return results;
@@ -185,20 +197,28 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
   if (url.pathname === '/subscribe') {
     if (!validSubscription(body.subscription) || !validConfig(body.config)) return reply(req, env, { error: 'Angaben unvollständig oder ungültig' }, 400);
     const old = await env.SUBS.get(key, 'json');
-    await env.SUBS.put(key, JSON.stringify({ subscription: body.subscription, config: body.config, lastSent: old?.lastSent ?? null, updated: now.toISOString() }));
+    await env.SUBS.put(key, JSON.stringify({ subscription: body.subscription, config: body.config, lastSent: old?.lastSent ?? null, lastEvening: old?.lastEvening ?? null, completeFor: old?.completeFor ?? null, updated: now.toISOString() }));
     return reply(req, env, { ok: true });
   }
   if (url.pathname === '/unsubscribe') {
     await env.SUBS.delete(key);
     return reply(req, env, { ok: true });
   }
+  if (url.pathname === '/logged') {
+    // Die App meldet: Heute ist erledigt (Fahrten eingetragen oder beantwortet). Dann entfällt die Abendfrage.
+    const record = await env.SUBS.get(key, 'json');
+    if (!record) return reply(req, env, { error: 'Gerät ist nicht angemeldet' }, 404);
+    if (typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) return reply(req, env, { error: 'Datum fehlt' }, 400);
+    await env.SUBS.put(key, JSON.stringify({ ...record, completeFor: body.complete === true ? body.date : record.completeFor === body.date ? null : record.completeFor }));
+    return reply(req, env, { ok: true });
+  }
   if (url.pathname === '/test') {
     const record = await env.SUBS.get(key, 'json');
     if (!record) return reply(req, env, { error: 'Gerät ist nicht angemeldet' }, 404);
     try {
-      const message = await buildMessage(record.config, now, forecastFor);
+      const message = await buildMessage(record.config, now, forecastFor, body.kind === 'abend' ? 'abend' : 'morgen');
       const res = await deliver(env, record, message);
-      return reply(req, env, { ok: res.ok, pushStatus: res.status, title: message.title, body: message.body }, res.ok ? 200 : 502);
+      return reply(req, env, { ok: res.ok, pushStatus: res.status, title: message.title, body: message.body, kind: message.kind }, res.ok ? 200 : 502);
     } catch (e) {
       return reply(req, env, { error: String(e?.message ?? e) }, 502);
     }

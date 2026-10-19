@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleRequest, runSchedule, buildMessage, localParts, validConfig } from '../worker/src/index.js';
 import { b64u } from '../worker/src/webpush.js';
-import { TITLES } from '../js/messages.js';
+import { TITLES, EVENING } from '../js/messages.js';
 
 class FakeKV {
   m = new Map();
@@ -158,4 +158,92 @@ test('buildMessage nutzt den Fahrtkurs: Rückenwind auf dem Hinweg', async () =>
   const m = await buildMessage(config, new Date('2026-10-15T04:30:00Z'), nice);
   assert.equal(m.status, 'go');
   assert.match(m.body, /Rückenwind/);
+});
+
+// ---------- Abendfrage ----------
+
+const evening = { ...config, eveningOn: true, eveningAt: '18:30' };
+const EVENING_NOW = new Date('2026-10-15T16:30:00Z'); // 18:30 Ortszeit
+
+test('Abends kommt die Frage mit eigenem Ziel, einmal pro Tag', async () => {
+  const { env, subscription, pushes, post, decryptLast } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  assert.deepEqual(await runSchedule(env, new Date('2026-10-15T16:15:00Z'), nice), []); // 18:15, noch zu früh
+  const r = await runSchedule(env, EVENING_NOW, nice);
+  assert.deepEqual(r.map((x) => [x.kind, x.sent]), [['abend', true]]);
+  const msg = await decryptLast();
+  assert.equal(msg.tag, 'abend');
+  assert.equal(msg.url, './#frage');
+  assert.ok(EVENING.go.some((e) => e.title === msg.title && e.body === msg.body), msg.title);
+  assert.deepEqual(await runSchedule(env, new Date('2026-10-15T16:45:00Z'), nice), []); // gleicher Tag
+  assert.equal(pushes.length, 1);
+  assert.equal((await runSchedule(env, new Date('2026-10-16T16:30:00Z'), nice))[0].kind, 'abend'); // nächster Tag
+});
+
+test('Morgens und abends sind unabhängig voneinander', async () => {
+  const { env, subscription, pushes, post, decryptLast } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  assert.deepEqual((await runSchedule(env, new Date('2026-10-15T04:30:00Z'), nice)).map((x) => x.kind), ['morgen']);
+  assert.equal((await decryptLast()).tag, 'morgen');
+  assert.deepEqual((await runSchedule(env, EVENING_NOW, nice)).map((x) => x.kind), ['abend']);
+  assert.equal(pushes.length, 2);
+});
+
+test('Der Text der Abendfrage passt zum Wetter', async () => {
+  const { env, subscription, post, decryptLast } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  await runSchedule(env, EVENING_NOW, stormy);
+  const msg = await decryptLast();
+  assert.ok(EVENING.no.some((e) => e.title === msg.title), msg.title);
+});
+
+test('Ist der Tag erledigt, entfällt die Frage; „nicht erledigt“ stellt sie wieder her', async () => {
+  const { env, subscription, pushes, post } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  assert.equal((await post('/logged', { endpoint: subscription.endpoint, date: '2026-10-15', complete: true })).status, 200);
+  assert.deepEqual(await runSchedule(env, EVENING_NOW, nice), []);
+  assert.equal(pushes.length, 0);
+  await post('/logged', { endpoint: subscription.endpoint, date: '2026-10-15', complete: false }); // Fahrt wieder gelöscht
+  assert.equal((await runSchedule(env, EVENING_NOW, nice))[0].sent, true);
+  // Erledigt für einen anderen Tag zählt nicht
+  const other = await setup();
+  await other.post('/subscribe', { subscription: other.subscription, config: evening });
+  await other.post('/logged', { endpoint: other.subscription.endpoint, date: '2026-10-14', complete: true });
+  assert.equal((await runSchedule(other.env, EVENING_NOW, nice))[0].sent, true);
+});
+
+test('Das Anmelden behält den Stand von heute', async () => {
+  const { env, subscription, pushes, post } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  await post('/logged', { endpoint: subscription.endpoint, date: '2026-10-15', complete: true });
+  await post('/subscribe', { subscription, config: { ...evening, eveningAt: '19:00' } }); // Einstellungen geändert
+  assert.deepEqual(await runSchedule(env, new Date('2026-10-15T17:00:00Z'), nice), []);
+  assert.equal(pushes.length, 0);
+});
+
+test('Ohne Abendfrage in den Einstellungen oder ohne die Angabe kommt abends nichts', async () => {
+  const off = await setup();
+  await off.post('/subscribe', { subscription: off.subscription, config: { ...evening, eveningOn: false } });
+  assert.deepEqual(await runSchedule(off.env, EVENING_NOW, nice), []);
+  const legacy = await setup();
+  await legacy.post('/subscribe', { subscription: legacy.subscription, config }); // alte Konfiguration ohne Abendfelder
+  assert.deepEqual(await runSchedule(legacy.env, EVENING_NOW, nice), []);
+});
+
+test('Am Wochenende fragt der Dienst nicht', async () => {
+  const { env, subscription, post } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  assert.deepEqual(await runSchedule(env, new Date('2026-10-17T16:30:00Z'), nice), []); // Samstag
+});
+
+test('Test-Knopf kann auch die Abendfrage senden; ungültige Angaben werden abgelehnt', async () => {
+  const { subscription, post, decryptLast } = await setup();
+  await post('/subscribe', { subscription, config: evening });
+  const res = await post('/test', { endpoint: subscription.endpoint, kind: 'abend' }, undefined, undefined, EVENING_NOW, nice);
+  const body = await res.json();
+  assert.equal(body.kind, 'abend');
+  assert.equal((await decryptLast()).tag, 'abend');
+  assert.equal((await post('/logged', { endpoint: subscription.endpoint, date: 'gestern', complete: true })).status, 400);
+  assert.equal((await post('/subscribe', { subscription, config: { ...evening, eveningAt: '25:00' } })).status, 400);
+  assert.equal((await post('/subscribe', { subscription, config: { ...evening, eveningOn: 'ja' } })).status, 400);
 });

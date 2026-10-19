@@ -36,3 +36,16 @@ test('Nur https-Adressen sind erlaubt (außer localhost)', () => {
   assert.equal(normalizeUrl('http://localhost:8787'), 'http://localhost:8787');
   assert.equal(normalizeUrl('quatsch'), null);
 });
+
+test('Die Konfiguration enthält die Abendfrage und bleibt für den Dienst gültig', () => {
+  const st = state();
+  const cfg = buildNotifyConfig(st);
+  assert.equal(cfg.eveningOn, true);
+  assert.equal(cfg.eveningAt, '18:30');
+  st.notify.eveningOn = false;
+  st.notify.eveningAt = '19:15';
+  const off = buildNotifyConfig(st);
+  assert.equal(off.eveningOn, false);
+  assert.equal(off.eveningAt, '19:15');
+  assert.equal(validConfig(off), true);
+});

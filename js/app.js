@@ -2,7 +2,7 @@ import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } fr
 import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
 import { askPin, hideLock, showMessage } from './lock.js';
 import { parseHealthText } from './health.js';
-import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush } from './push.js';
+import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay } from './push.js';
 import { TITLES } from './messages.js';
 import { midpoint, distanceM, searchAddress, currentPosition, fetchBikeRoute } from './geo.js';
 import { mapThumb, simplify } from './map.js';
@@ -18,6 +18,7 @@ const view = document.getElementById('view');
 const persist = () => {
   const r = session ? session.save(state) : save(state);
   schedulePushSync();
+  scheduleDayStatus();
   return r;
 };
 
@@ -316,6 +317,31 @@ function onboarding() {
 let dayOffset = null;
 let dayOffsetFor = '';
 
+function askCard(missing) {
+  const km = fmt.km(state.route.distanceKm);
+  if (missing.length === 2) {
+    return `<section class="card ask" aria-label="Frage zum heutigen Tag">
+      <h2>Bist du heute gefahren?</h2>
+      <p class="muted">Ein Tipp trägt ${km} km pro Weg ein.</p>
+      <div class="ask-buttons">
+        <button class="btn primary wide" data-action="ask" data-a="both">Ja, hin und zurück</button>
+        <button class="btn" data-action="ask" data-a="hin">Nur Hinweg</button>
+        <button class="btn" data-action="ask" data-a="rueck">Nur Rückweg</button>
+        <button class="btn ghost wide" data-action="ask" data-a="none">Nein, nicht gefahren</button>
+      </div>
+    </section>`;
+  }
+  const dir = missing[0];
+  return `<section class="card ask" aria-label="Frage zum heutigen Tag">
+    <h2>${dir === 'hin' ? 'Hinweg' : 'Rückweg'} auch gefahren?</h2>
+    <p class="muted">Ein Tipp trägt ${km} km ein.</p>
+    <div class="ask-buttons">
+      <button class="btn primary wide" data-action="ask" data-a="${dir}">Ja, ${dir === 'hin' ? 'Hinweg' : 'Rückweg'}</button>
+      <button class="btn ghost wide" data-action="ask" data-a="none">Nein</button>
+    </div>
+  </section>`;
+}
+
 function renderToday() {
   const key = locKey();
   if (!key) {
@@ -336,6 +362,8 @@ function renderToday() {
     dayOffsetFor = todayISO();
     dayOffset = commuteDone(state.route) ? 1 : 0;
   }
+  const asked = location.hash === '#frage'; // aus der Abendmeldung geöffnet
+  if (asked) dayOffset = 0;
   const target = dayTarget(forecast, dayOffset);
   const day = assessDay(forecast, state.route, state.rules, target);
   const rainy = [day.hin, day.rueck].some((t) => t && (t.rainProb >= state.rules.maxRainProb || t.precip > state.rules.maxPrecip));
@@ -343,12 +371,16 @@ function renderToday() {
   const canLog = target.isToday && isWorkday;
   const has = (dir) => state.rides.some((r) => r.date === target.date && r.direction === dir);
   const s = streak();
+  const missing = ['hin', 'rueck'].filter((d) => !has(d));
+  const showAsk = target.isToday && isWorkday && missing.length > 0 && state.notify.answeredDate !== target.date && (asked || commuteDone(state.route));
 
   view.innerHTML = `
   <header class="top">
     <p class="date">${fmt.dayLong(target.date)}${isWorkday ? '' : '<span>kein Arbeitstag</span>'}</p>
     ${s ? `<span class="streak" title="${s} Arbeitstage in Folge mit dem Rad">${I.flame}${s}</span>` : ''}
   </header>
+
+  ${showAsk ? askCard(missing) : ''}
 
   <div class="segmented two" role="tablist" aria-label="Tag">
     <button role="tab" data-action="day" data-d="0" aria-selected="${dayOffset === 0}">Heute</button>
@@ -1033,7 +1065,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.10 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.11 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1059,6 +1091,7 @@ function updateCalcs() {
 // ---------- Interaktion ----------
 
 function readInput(el) {
+  if (el.type === 'checkbox') return el.checked;
   if (el.type === 'number' || el.type === 'range') {
     const v = parseFloat(String(el.value).replace(',', '.'));
     return Number.isFinite(v) ? v : null;
@@ -1177,6 +1210,22 @@ function setPlace(which, place) {
 const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
+  'notify-test-evening': () => testNotify('abend'),
+  ask: (el) => {
+    const a = el.dataset.a;
+    const date = todayISO();
+    const legs = a === 'both' ? ['hin', 'rueck'] : a === 'none' ? [] : [a];
+    for (const direction of legs) {
+      if (!state.rides.some((r) => r.date === date && r.direction === direction)) state.rides.push(makeRide({ date, direction, km: state.route.distanceKm }));
+    }
+    state.notify.answeredDate = date;
+    persist();
+    if (location.hash === '#frage') history.replaceState(null, '', `${location.pathname}${location.search}#heute`);
+    toast(
+      a === 'none' ? 'Notiert: heute nicht gefahren.' : a === 'both' ? `Hin- und Rückweg gespeichert: ${fmt.km(state.route.distanceKm * 2)} km` : `${a === 'hin' ? 'Hinweg' : 'Rückweg'} gespeichert: ${fmt.km(state.route.distanceKm)} km`,
+    );
+    renderToday();
+  },
   'notify-enable': () => enableNotify(),
   'notify-disable': () => disableNotify(),
   'notify-test': () => testNotify(),
@@ -1428,6 +1477,33 @@ function schedulePushSync() {
   }, 2500);
 }
 
+// Die App sagt dem Dienst, ob der heutige Tag erledigt ist. Dann fragt er abends nicht mehr.
+let dayStatusTimer = 0;
+let lastDayStatus = '';
+
+function todayComplete(date = todayISO()) {
+  const logged = (d) => state.rides.some((r) => r.date === date && r.direction === d);
+  return state.notify.answeredDate === date || (logged('hin') && logged('rueck'));
+}
+
+function scheduleDayStatus() {
+  if (!state.notify?.enabled || !state.notify.eveningOn || locked) return;
+  clearTimeout(dayStatusTimer);
+  dayStatusTimer = setTimeout(async () => {
+    const date = todayISO();
+    const complete = todayComplete(date);
+    const sig = `${date}:${complete}`;
+    const base = normalizeUrl(state.notify.url);
+    if (sig === lastDayStatus || !base) return;
+    try {
+      await reportDay({ url: base, token: state.notify.token, date, complete });
+      lastDayStatus = sig;
+    } catch (e) {
+      console.warn('Tagesstatus konnte nicht gemeldet werden:', e.message);
+    }
+  }, 1500);
+}
+
 async function enableNotify() {
   // Gleich als Erstes: Die Nachfrage „Mitteilungen erlauben“ darf nur direkt nach dem Tipp kommen
   const n = state.notify;
@@ -1464,16 +1540,22 @@ async function disableNotify() {
   toast('Morgenmeldung ist aus');
 }
 
-async function testNotify() {
+async function testNotify(kind = 'morgen') {
   notifyBusy = true;
   renderSettings();
   try {
-    const r = await testPush({ url: normalizeUrl(state.notify.url), token: state.notify.token });
+    const r = await testPush({ url: normalizeUrl(state.notify.url), token: state.notify.token, kind });
     toast(`Gesendet: „${r.title}“. Sie sollte gleich erscheinen.`);
   } finally {
     notifyBusy = false;
     renderSettings();
   }
+}
+
+function eveningFields() {
+  const n = state.notify;
+  return `<label class="check"><input type="checkbox" data-path="notify.eveningOn" data-rerender ${n.eveningOn ? 'checked' : ''}><span>Abends fragen, ob du gefahren bist</span></label>
+    ${n.eveningOn ? `<label class="field">Uhrzeit abends<span class="input"><input type="time" data-path="notify.eveningAt" value="${esc(n.eveningAt)}"></span></label>` : ''}`;
 }
 
 function notifyGroup() {
@@ -1490,12 +1572,14 @@ function notifyGroup() {
   <section class="group" id="morgen"><h2>Morgenmeldung</h2><div class="card settings">
     ${
       n.enabled
-        ? `<p class="sec-status">${I.check}Aktiv, jeden Arbeitstag ab ${esc(n.time)} Uhr</p>
-          <label class="field">Uhrzeit<span class="input"><input type="time" data-path="notify.time" value="${esc(n.time)}"></span></label>
-          <div class="actions"><button class="btn primary" data-action="notify-test" ${notifyBusy ? 'disabled' : ''}>Test senden</button><button class="btn ghost" data-action="notify-disable" ${notifyBusy ? 'disabled' : ''}>Ausschalten</button></div>`
+        ? `<p class="sec-status">${I.check}Aktiv, jeden Arbeitstag ab ${esc(n.time)} Uhr${n.eveningOn ? `, abends ab ${esc(n.eveningAt)} Uhr` : ''}</p>
+          <label class="field">Uhrzeit morgens<span class="input"><input type="time" data-path="notify.time" value="${esc(n.time)}"></span></label>
+          ${eveningFields()}
+          <div class="actions"><button class="btn primary" data-action="notify-test" ${notifyBusy ? 'disabled' : ''}>Test: Morgen</button>${n.eveningOn ? `<button class="btn" data-action="notify-test-evening" ${notifyBusy ? 'disabled' : ''}>Test: Abend</button>` : ''}<button class="btn ghost" data-action="notify-disable" ${notifyBusy ? 'disabled' : ''}>Ausschalten</button></div>`
         : `<p class="sec-note">Jeden Arbeitstag eine Meldung, ob das Rad heute drankommt, etwa „Jetzt losfahren!“ oder „Nimm lieber das Auto“. Dafür läuft ein kleiner eigener Dienst bei Cloudflare, kostenlos und einmalig einzurichten.</p>
           ${support.ok ? '' : `<p class="sec-note warn">${esc(support.reason)}</p>`}
-          <label class="field">Uhrzeit<span class="input"><input type="time" data-path="notify.time" value="${esc(n.time)}"></span></label>
+          <label class="field">Uhrzeit morgens<span class="input"><input type="time" data-path="notify.time" value="${esc(n.time)}"></span></label>
+          ${eveningFields()}
           <label class="field">Adresse deines Push-Dienstes<span class="input"><input type="url" inputmode="url" data-path="notify.url" value="${esc(n.url)}" placeholder="https://rueckenwind-push.name.workers.dev" autocomplete="off" autocapitalize="off"></span></label>
           <label class="field">Token<span class="input"><input type="password" data-path="notify.token" value="${esc(n.token)}" autocomplete="off"></span></label>
           <button class="btn primary" data-action="notify-enable" ${notifyBusy ? 'disabled' : ''}>${notifyBusy ? 'Einen Moment …' : 'Einschalten'}</button>`
@@ -1693,6 +1777,7 @@ async function handleOAuthReturn() {
 function boot() {
   render();
   schedulePushSync();
+  scheduleDayStatus();
   handleOAuthReturn();
   if (state.route.home && state.route.work && ((!state.route.distanceManual && !state.route.distanceSource) || !state.route.path?.length)) updateRouteDistance();
 }

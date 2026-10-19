@@ -59,7 +59,9 @@ Die Strava-Schnittstelle ist nur mit einem Strava-Abonnement nutzbar. Wer eines 
 
 Jeden Arbeitstag zur Wunschzeit kommt eine Meldung, zum Beispiel **„Jetzt losfahren!“** (mit dem Grund, etwa „Trocken, 12 °C, Rückenwind am Morgen“) oder **„Nimm lieber das Auto“**. Die Überschrift wechselt täglich aus einer Reihe von Varianten (`js/messages.js`), nie dieselbe an zwei Tagen hintereinander.
 
-**Warum ein eigener Dienst?** Eine Webseite kann nicht von allein aufwachen. Damit morgens etwas ankommt, wenn die App zu ist, muss ein Server die Meldung schicken. Dafür dient ein winziger Cloudflare Worker in `worker/`. Er kostet nichts (kostenloser Tarif) und läuft in deinem eigenen Konto. Er speichert nur die Push-Adresse deines Geräts, den Mittelpunkt der Strecke (auf etwa 1 km gerundet), den Fahrtkurs, deine Zeiten und Schwellen. Deine genauen Adressen gehen nie dorthin.
+**Abendfrage:** Zusätzlich fragt eine zweite Meldung abends (Standard 18:30 Uhr, einstellbar, abschaltbar), ob du gefahren bist, zum Beispiel „Bist du heute geradelt?“ oder, bei schlechtem Wetter, „Heute doch mit dem Rad?“. Der Text passt zum Wetter des Tages. Ein Tipp auf die Meldung öffnet die App mit den Antwortknöpfen **Ja, hin und zurück / Nur Hinweg / Nur Rückweg / Nein**, die Fahrt wird mit deiner Strecke eingetragen. iOS zeigt in Web-Mitteilungen keine eigenen Knöpfe an, deshalb die Antwort in der App. Ist der Tag schon erledigt (beide Wege eingetragen oder beantwortet), meldet die App das dem Dienst, und die Frage entfällt. Ab dem Rückweg zeigt die App die Frage außerdem von selbst auf „Heute“, falls noch nichts eingetragen ist.
+
+**Warum ein eigener Dienst?** Eine Webseite kann nicht von allein aufwachen. Damit morgens etwas ankommt, wenn die App zu ist, muss ein Server die Meldung schicken. Dafür dient ein winziger Cloudflare Worker in `worker/`. Er kostet nichts (kostenloser Tarif) und läuft in deinem eigenen Konto. Er speichert nur die Push-Adresse deines Geräts, den Mittelpunkt der Strecke (auf etwa 1 km gerundet), den Fahrtkurs, deine Zeiten und Schwellen sowie, ob der heutige Tag erledigt ist. Deine genauen Adressen gehen nie dorthin.
 
 **Voraussetzungen:** iPhone mit iOS 16.4 oder neuer, die App ist **zum Home-Bildschirm hinzugefügt** und wird von dort geöffnet, ein kostenloses [Cloudflare-Konto](https://dash.cloudflare.com/sign-up), Node.js auf dem Mac.
 
@@ -83,6 +85,8 @@ Das Skript zeigt am Ende **nur das Token** an (einmal, bitte kopieren). Den priv
 Wichtig: Alle Befehle im Ordner `worker/` ausführen (die Eingabezeile endet auf `worker %`). In einem anderen Ordner findet wrangler die Konfiguration nicht.
 
 **In der App:** Einstellungen → Morgenmeldung. Adresse des Dienstes und Token eintragen, **Einschalten** tippen und die Nachfrage „Mitteilungen erlauben“ bestätigen. Danach **Test senden**: Die Meldung für heute sollte nach wenigen Sekunden erscheinen. Ab dann prüft der Dienst alle 15 Minuten und schickt einmal pro Arbeitstag nach der Wunschzeit. Ändern sich Strecke, Zeiten oder Schwellen, überträgt die App die neuen Werte von selbst.
+
+**Nach einem Update des Dienstes** (zum Beispiel für die Abendfrage) einmal im Ordner `worker/` `npx wrangler@4 deploy` ausführen. Die Schlüssel bleiben erhalten.
 
 **Zum Prüfen und Abstellen**
 - Läuft der Dienst? `https://…workers.dev/health` im Browser öffnen, es kommt `{"ok":true}`.
