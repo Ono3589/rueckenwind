@@ -418,20 +418,20 @@ const DIR_LABEL = { hin: 'Hinweg', rueck: 'Rückweg' };
 
 function shortcutHelp() {
   return `<ol class="steps">
-    <li>In der <strong>eBike Flow</strong>-App die Verbindung zu <strong>Apple Health</strong> einschalten. In der Health-App unter „Teilen“ prüfen, dass eBike Flow Trainings (Radfahren) schreibt.</li>
+    <li>Prüfe zuerst in der <strong>Health</strong>-App (Teilen → Apps), ob <strong>eBike Flow</strong> dort steht, und unter „Entdecken → Aktivität → Trainings“, ob deine Fahrten mit Strecke und Kalorien auftauchen. Schalte sonst in eBike Flow die Verbindung zu Apple Health ein.</li>
     <li>In der <strong>Kurzbefehle</strong>-App einen neuen Kurzbefehl „Rückenwind“ anlegen:
       <ol>
-        <li><em>Health-Samples suchen</em>: Typ <strong>Trainings</strong>, Aktivität Radfahren, Startdatum in den letzten 2 Tagen.</li>
-        <li><em>Für jedes Element wiederholen</em>: darin einen <strong>Text</strong> aus Startdatum (Format <code>yyyy-MM-dd</code>), <code>;</code>, Startdatum (Format <code>HH:mm</code>), <code>;</code>, Strecke in km, <code>;</code>, Dauer in Minuten, <code>;</code>, aktive Energie in kcal bauen.</li>
-        <li>Danach <em>Text kombinieren</em> (neue Zeile) und <em>In die Zwischenablage kopieren</em>.</li>
+        <li><em>Health-Samples suchen</em> (englisch „Find Health Samples“): Typ <strong>Trainings</strong>, Startdatum in den letzten 2 Tagen.</li>
+        <li><em>Für jedes Element wiederholen</em>: darin die Aktion <em>Text</em>. Füge nacheinander ein: Startdatum, <code>;;</code>, Strecke, <code>;</code>, Dauer, <code>;</code>, aktive Energie. Du musst nichts umformatieren.</li>
+        <li>Nach der Schleife <em>Text kombinieren</em> (Trennzeichen: neue Zeile) und <em>In die Zwischenablage kopieren</em>.</li>
       </ol>
     </li>
-    <li>Optional als <strong>Automation</strong>: Persönliche Automation, Tageszeit 18:30, den Kurzbefehl ohne Nachfrage ausführen.</li>
+    <li>Optional als <strong>Automation</strong>: Persönliche Automation, Tageszeit 18:00, den Kurzbefehl ohne Nachfrage ausführen.</li>
     <li>Hier auf <strong>Einfügen</strong> tippen und die gefundenen Fahrten bestätigen.</li>
   </ol>
-  <p class="note">Eine Zeile pro Fahrt, zum Beispiel:</p>
-  <code class="codebox">2026-10-12;07:31;10,4;27;186</code>
-  <p class="note">Start, Dauer und Kalorien dürfen fehlen. Gibt es keine Trainings, reicht auch die Tagessumme der Raddistanz als <code>2026-10-12;;20,8</code>. Die App verteilt sie auf Hin- und Rückweg. Die Bezeichnungen der Aktionen können je nach iOS-Version leicht abweichen.</p>`;
+  <p class="note">Eine Zeile pro Fahrt. Die App liest die Werte so, wie iOS sie ausgibt, zum Beispiel:</p>
+  <code class="codebox">12.10.2026, 07:31;;10,4 km;27 min;186 kcal</code>
+  <p class="note">Strecke, Dauer und Kalorien dürfen fehlen. Gibt es keine Trainings, reicht die Tagessumme der Raddistanz, etwa <code>12.10.2026;;20,8 km</code>. Die App verteilt sie auf Hin- und Rückweg. Die Bezeichnungen der Aktionen können je nach iOS-Version leicht abweichen.</p>`;
 }
 
 function loadImportPreview(text) {
@@ -1065,7 +1065,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.11 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.12 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();

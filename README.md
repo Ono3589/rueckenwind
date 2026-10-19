@@ -43,8 +43,8 @@ Unter Einstellungen → Sicherheit lässt sich eine PIN (6, 8 oder 10 Ziffern) e
 
 Bosch bietet keine öffentliche Kiox-API. Der kostenlose Weg geht über Apple Health:
 
-1. In der **eBike-Flow**-App die Verbindung zu Apple Health einschalten.
-2. In der **Kurzbefehle**-App einen Kurzbefehl bauen, der die letzten Radtrainings aus Apple Health liest und pro Fahrt eine Zeile `datum;start;km;minuten;kcal` in die **Zwischenablage** kopiert, zum Beispiel `2026-10-12;07:31;10,4;27;186`. Start, Dauer und Kalorien dürfen fehlen. Eine Zeile `datum;;km` mit der Tagessumme wird auf Hin- und Rückweg verteilt.
+1. In der **eBike-Flow**-App die Verbindung zu Apple Health einschalten. In der Health-App unter „Teilen → Apps“ prüfen, dass eBike Flow dort steht, und unter „Entdecken → Aktivität → Trainings“, dass die Fahrten mit Strecke und Kalorien erscheinen.
+2. In der **Kurzbefehle**-App einen Kurzbefehl bauen: *Health-Samples suchen* (Typ Trainings, letzte 2 Tage) → *Für jedes Element wiederholen* → darin ein *Text* aus Startdatum, `;;`, Strecke, `;`, Dauer, `;`, aktive Energie → danach *Text kombinieren* (neue Zeile) → *In die Zwischenablage kopieren*. Die Werte müssen nicht umformatiert werden. Die App versteht sie so, wie iOS sie ausgibt, zum Beispiel `12.10.2026, 07:31;;10,4 km;27 min;186 kcal`. Auch `2026-10-12;07:31;10,4;27;186` geht. Strecke, Dauer und Kalorien dürfen fehlen. Eine Zeile `12.10.2026;;20,8 km` mit der Tagessumme wird auf Hin- und Rückweg verteilt.
 3. In Rückenwind unter **Fahrten → Einfügen** die gefundenen Fahrten ansehen und übernehmen. Fahrten, die nicht zu deiner Strecke passen, sind abgewählt, bereits übernommene werden übersprungen.
 
 Warum die Zwischenablage? Ein Link aus einem Kurzbefehl öffnet auf dem iPhone immer Safari, nie die installierte App. Safari und die App haben getrennten Speicher, die Daten kämen also nie an. Die Zwischenablage ist der einzige Weg, der in die installierte App führt. iOS fragt beim Einfügen einmal nach.

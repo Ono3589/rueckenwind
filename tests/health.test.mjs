@@ -34,7 +34,7 @@ test('Ohne Startzeit und mit passender Einzelstrecke: erst Hinweg, dann Rückweg
 });
 
 test('Kaputte oder unplausible Zeilen werden gemeldet und nicht übernommen', () => {
-  const text = ['RW;Fahrten', 'abc;07:30;10;20;100', '2026-02-30;07:30;10;20;100', '2026-10-12;07:30;0;20;100', '2026-10-12;07:30;900;20;100', '2026-10-12;07:30;10;0;100', '2026-10-12;07:30;10;20;99999', '2027-01-01;07:30;10;20;100', '', '# Kommentar', '2026-10-12;07:30;10,0;20;100'].join('\n');
+  const text = ['RW;Fahrten', 'abc;07:30;10;20;100', '2026-02-30;07:30;10;20;100', '2026-10-12;07:30;0;20;100', '2026-10-12;07:30;900 km;20;100', '2026-10-12;07:30;10;0;100', '2026-10-12;07:30;10;20;99999', '2027-01-01;07:30;10;20;100', '', '# Kommentar', '2026-10-12;07:30;10,0;20;100'].join('\n');
   const { items, ignored } = parseHealthText(text, opts);
   assert.equal(items.length, 1);
   assert.equal(ignored.length, 7);
@@ -56,4 +56,37 @@ test('Doppelte Zeilen zählen nur einmal, Zeilenzahl ist begrenzt', () => {
 test('Leerer Text und Unsinn ergeben nichts', () => {
   assert.deepEqual(parseHealthText('', opts), { items: [], ignored: [] });
   assert.equal(parseHealthText('<script>alert(1)</script>', opts).items.length, 0);
+});
+
+test('Rohwerte von iOS werden verstanden: Datum mit Uhrzeit, Einheiten, Dauer als Uhrzeit', () => {
+  const text = [
+    '12.10.2026, 07:31;;10,4 km;00:27:03;186 kcal',
+    '12.10.26, 17:05;;10200 m;26 min;181 Cal',
+    '12. Okt. 2026 um 07:50;;10,1 km;1 Std. 5 Min.;180 kcal',
+  ].join('\n');
+  const { items, ignored } = parseHealthText(text, opts);
+  assert.equal(ignored.length, 0, JSON.stringify(ignored));
+  const byStart = Object.fromEntries(items.map((i) => [i.start, i]));
+  assert.deepEqual([byStart['07:31'].date, byStart['07:31'].direction, byStart['07:31'].km, byStart['07:31'].minutes, byStart['07:31'].kcal], ['2026-10-12', 'hin', 10.4, 27, 186]);
+  assert.deepEqual([byStart['17:05'].date, byStart['17:05'].direction, byStart['17:05'].km, byStart['17:05'].minutes, byStart['17:05'].kcal], ['2026-10-12', 'rueck', 10.2, 26, 181]);
+  assert.equal(byStart['07:50'].minutes, 65);
+});
+
+test('Einheiten: Meter, Meilen, Sekunden, Kilojoule und deutsche Tausenderpunkte', () => {
+  const one = (km, min, kcal) => parseHealthText(`2026-10-12;07:30;${km};${min};${kcal}`, { distanceKm: 0, today: '2026-10-12' }).items[0];
+  assert.equal(one('10.400 m', '', '').km, 10.4);
+  assert.equal(one('6,2 mi', '', '').km, 10);
+  assert.equal(one('10400', '', '').km, 10.4); // ohne Einheit und zu groß für km: Meter
+  assert.equal(one('10', '1620 s', '').minutes, 27);
+  assert.equal(one('10', '27,5 min', '').minutes, 28);
+  assert.equal(one('10', '1:05', '').minutes, 65);
+  assert.equal(one('10', '27:03', '').minutes, 27);
+  assert.equal(one('10', '', '780 kJ').kcal, 186);
+  assert.equal(one('10', '', '1.200 kcal').kcal, 1200);
+});
+
+test('Unlesbare Einheiten und Daten werden abgelehnt', () => {
+  for (const bad of ['2026-10-12;07:30;zehn km', '2026-10-12;07:30;10 km;lange;', '2026-10-12;07:30;10 km;27 min;viel', '31. Foo 2026;;10 km']) {
+    assert.equal(parseHealthText(bad, opts).items.length, 0, bad);
+  }
 });
