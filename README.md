@@ -47,6 +47,21 @@ Bosch bietet keine öffentliche Kiox-API. Der kostenlose Weg geht über Apple He
 2. In der **Kurzbefehle**-App einen Kurzbefehl bauen: *Health-Samples suchen* (Typ Trainings, letzte 2 Tage) → *Für jedes Element wiederholen* → darin ein *Text* aus Startdatum, `;;`, Strecke, `;`, Dauer, `;`, aktive Energie → danach *Text kombinieren* (neue Zeile) → *In die Zwischenablage kopieren*. Die Werte müssen nicht umformatiert werden. Die App versteht sie so, wie iOS sie ausgibt, zum Beispiel `12.10.2026, 07:31;;10,4 km;27 min;186 kcal`. Auch `2026-10-12;07:31;10,4;27;186` geht. Strecke, Dauer und Kalorien dürfen fehlen. Eine Zeile `12.10.2026;;20,8 km` mit der Tagessumme wird auf Hin- und Rückweg verteilt.
 3. In Rückenwind unter **Fahrten → Einfügen** die gefundenen Fahrten ansehen und übernehmen. Fahrten, die nicht zu deiner Strecke passen, sind abgewählt, bereits übernommene werden übersprungen.
 
+### Automatisch, ohne Tippen (über den Push-Dienst)
+
+Eine Web-App kann Apple Health nicht selbst lesen (das geht nur mit einer nativen iOS-App und bezahltem Entwicklerkonto). Der Kurzbefehl kann die Fahrten aber an deinen eigenen Dienst schicken, und die App holt sie dort ab:
+
+```
+Kiox → eBike Flow → Apple Health → Kurzbefehl (Automation) → Push-Dienst (/rides) → App holt ab (/inbox)
+```
+
+1. Einmalig einen **Abliefer-Token** erzeugen, der nur Fahrten abliefern darf (er ist getrennt vom Haupt-Token): `node worker/scripts/setup-secrets.mjs ingest`. Danach den Dienst aktualisieren: im Ordner `worker/` `npx wrangler@4 deploy`.
+2. Im Kurzbefehl statt „In die Zwischenablage kopieren“ **Inhalt von URL abrufen**: URL `https://DEIN-DIENST.workers.dev/rides`, Methode POST, Header `Authorization: Bearer ABLIEFER-TOKEN`, Anfragetext JSON mit einem Feld `text` (der kombinierte Text).
+3. Als Automation: Persönliche Automation → App „eBike Flow“ → wird geschlossen → sofort ausführen. Gesundheitsdaten sind bei gesperrtem iPhone nicht lesbar, ein Auslöser mitten in der Nacht liefert deshalb nichts.
+4. Die App holt neue Fahrten beim Öffnen und beim Zurückkehren (höchstens einmal pro Minute) oder per „Jetzt holen“ in den Einstellungen. Fahrten, die zu deiner Strecke passen, werden gleich übernommen. Alles andere (zum Beispiel eine lange Tour) landet unter **Fahrten → „zur Prüfung“**, dort wählst du aus. Erst nach dem sicheren Speichern in der App werden die Fahrten beim Dienst gelöscht. Nicht abgeholte Fahrten verfallen nach 30 Tagen.
+
+Was der Dienst dabei speichert: nur Datum, Startzeit, Strecke, Dauer und Kalorien der gelieferten Fahrten, keine Orte. Mit eingeschalteter App-Sperre sind die Fahrten in der App danach verschlüsselt, beim Dienst liegen sie bis zum Abholen im Klartext.
+
 Warum die Zwischenablage? Ein Link aus einem Kurzbefehl öffnet auf dem iPhone immer Safari, nie die installierte App. Safari und die App haben getrennten Speicher, die Daten kämen also nie an. Die Zwischenablage ist der einzige Weg, der in die installierte App führt. iOS fragt beim Einfügen einmal nach.
 
 Der Kurzbefehl wurde ohne iPhone entworfen und ist **ungetestet**. Die Bezeichnungen der Aktionen können je nach iOS-Version abweichen. Das Einlesen der Zeilen in der App ist getestet (`tests/health.test.mjs`).

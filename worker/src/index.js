@@ -5,8 +5,12 @@
 import { fetchForecast, assessDay } from '../../js/weather.js';
 import { buildNotification, buildEveningNotification } from '../../js/messages.js';
 import { sendPush } from './webpush.js';
+import { parseHealthText } from '../../js/health.js';
 
 const PREFIX = 'sub:';
+const INBOX = 'inbox:'; // Fahrten, die ein Kurzbefehl aus Apple Health geschickt hat und die die App noch abholt
+const INBOX_TTL = 30 * 24 * 3600; // nicht abgeholte Fahrten verfallen nach 30 Tagen
+const MAX_RIDES_TEXT = 16384;
 const WINDOW_MIN = 180; // so lange nach der Wunschzeit wird noch nachgeholt, falls ein Lauf ausfällt
 
 // ---------- Hilfen ----------
@@ -172,16 +176,51 @@ function corsHeaders(req, env) {
 const reply = (req, env, body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(req, env) } });
 
+const isoDate = (d) => d.toISOString().slice(0, 10);
+const newInboxId = (now) => `${now.getTime()}-${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+
 export async function handleRequest(req, env, now = new Date(), forecastFor = fetchForecast) {
   const url = new URL(req.url);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req, env) });
   if (req.method === 'GET' && url.pathname === '/health') return reply(req, env, { ok: true });
   if (req.method === 'GET' && url.pathname === '/vapid') return reply(req, env, { publicKey: env.VAPID_PUBLIC ?? '' });
+
+  // Zwei Schlüssel: API_TOKEN darf alles, INGEST_TOKEN (im Kurzbefehl) darf nur Fahrten abliefern
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const isMain = !!env.API_TOKEN && !!token && (await sameToken(token, env.API_TOKEN));
+  const isIngest = !!env.INGEST_TOKEN && !!token && (await sameToken(token, env.INGEST_TOKEN));
+
+  if (req.method === 'GET' && url.pathname === '/inbox') {
+    if (!isMain) return reply(req, env, { error: 'Token falsch' }, 401);
+    const { keys } = await env.SUBS.list({ prefix: INBOX });
+    const items = [];
+    for (const { name } of keys.slice(-50)) {
+      const v = await env.SUBS.get(name, 'json');
+      if (v) items.push({ id: name.slice(INBOX.length), text: v.text, received: v.received });
+    }
+    return reply(req, env, { items });
+  }
   if (req.method !== 'POST') return reply(req, env, { error: 'nicht gefunden' }, 404);
 
-  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-  if (!env.API_TOKEN || !token || !(await sameToken(token, env.API_TOKEN))) return reply(req, env, { error: 'Token falsch' }, 401);
+  if (url.pathname === '/rides') {
+    // Vom Kurzbefehl: Text mit einer Fahrt pro Zeile, als JSON {"text": "…"} oder als reiner Text
+    if (!isMain && !isIngest) return reply(req, env, { error: 'Token falsch' }, 401);
+    const raw = await req.text();
+    if (raw.length > MAX_RIDES_TEXT) return reply(req, env, { error: 'zu groß' }, 413);
+    let text = raw;
+    try {
+      const j = JSON.parse(raw);
+      if (j && typeof j === 'object') text = typeof j.text === 'string' ? j.text : '';
+    } catch {
+      /* reiner Text */
+    }
+    const { items, ignored } = parseHealthText(text, { distanceKm: 0, today: isoDate(now) });
+    if (!items.length) return reply(req, env, { ok: true, accepted: 0, ignored: ignored.length });
+    await env.SUBS.put(INBOX + newInboxId(now), JSON.stringify({ text: text.trim(), received: now.toISOString() }), { expirationTtl: INBOX_TTL });
+    return reply(req, env, { ok: true, accepted: items.length, ignored: ignored.length });
+  }
 
+  if (!isMain) return reply(req, env, { error: 'Token falsch' }, 401);
   const raw = await req.text();
   if (raw.length > 8192) return reply(req, env, { error: 'zu groß' }, 413);
   let body;
@@ -190,6 +229,13 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
   } catch {
     return reply(req, env, { error: 'kein JSON' }, 400);
   }
+
+  if (url.pathname === '/inbox/ack') {
+    const ids = Array.isArray(body?.ids) ? body.ids.filter((i) => typeof i === 'string' && /^[\w-]{1,40}$/.test(i)).slice(0, 50) : [];
+    for (const id of ids) await env.SUBS.delete(INBOX + id);
+    return reply(req, env, { ok: true, removed: ids.length });
+  }
+
   const endpoint = body?.subscription?.endpoint ?? body?.endpoint;
   if (typeof endpoint !== 'string') return reply(req, env, { error: 'Push-Adresse fehlt' }, 400);
   const key = PREFIX + (await sha256hex(endpoint));

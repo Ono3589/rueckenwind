@@ -123,3 +123,12 @@ export async function reportDay({ url, token, date, complete }) {
   if (!endpoint) return;
   await call(url, token, '/logged', { endpoint, date, complete });
 }
+
+// Fahrten, die ein Kurzbefehl aus Apple Health an den Dienst geschickt hat
+export async function fetchInbox({ url, token }) {
+  return call(url, token, '/inbox');
+}
+
+export async function ackInbox({ url, token, ids }) {
+  if (ids.length) await call(url, token, '/inbox/ack', { ids });
+}

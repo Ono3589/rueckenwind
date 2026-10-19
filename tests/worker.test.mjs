@@ -247,3 +247,74 @@ test('Test-Knopf kann auch die Abendfrage senden; ungültige Angaben werden abge
   assert.equal((await post('/subscribe', { subscription, config: { ...evening, eveningAt: '25:00' } })).status, 400);
   assert.equal((await post('/subscribe', { subscription, config: { ...evening, eveningOn: 'ja' } })).status, 400);
 });
+
+// ---------- Fahrten aus Apple Health (Kurzbefehl → Dienst → App) ----------
+
+const getInbox = async (env, token = env.API_TOKEN, origin = 'https://ono3589.github.io') =>
+  handleRequest(new Request('https://w.example/inbox', { headers: { Authorization: `Bearer ${token}`, Origin: origin } }), env, new Date('2026-10-15T20:00:00Z'));
+
+const sendRides = (env, body, { token = env.INGEST_TOKEN, json = true } = {}) =>
+  handleRequest(new Request('https://w.example/rides', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': json ? 'application/json' : 'text/plain' }, body: json ? JSON.stringify({ text: body }) : body }), env, new Date('2026-10-15T20:00:00Z'));
+
+const RIDES = '15.10.2026, 07:31;;10,4 km;27 min;186 kcal\n15.10.2026, 17:05;;10,2 km;26 min;181 kcal';
+
+test('Der Kurzbefehl liefert Fahrten ab, die App holt und bestätigt sie', async () => {
+  const { env } = await setup();
+  env.INGEST_TOKEN = 'nur-zum-abliefern';
+  const r = await sendRides(env, RIDES);
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true, accepted: 2, ignored: 0 });
+
+  const inbox = await (await getInbox(env)).json();
+  assert.equal(inbox.items.length, 1);
+  assert.equal(inbox.items[0].text, RIDES);
+  assert.match(inbox.items[0].id, /^[\w-]+$/);
+
+  const ack = await handleRequest(new Request('https://w.example/inbox/ack', { method: 'POST', headers: { Authorization: `Bearer ${env.API_TOKEN}` }, body: JSON.stringify({ ids: [inbox.items[0].id] }) }), env);
+  assert.deepEqual(await ack.json(), { ok: true, removed: 1 });
+  assert.deepEqual((await (await getInbox(env)).json()).items, []);
+});
+
+test('Reiner Text im Body geht auch, leere oder kaputte Lieferungen werden nicht gespeichert', async () => {
+  const { env } = await setup();
+  env.INGEST_TOKEN = 'nur-zum-abliefern';
+  assert.equal((await (await sendRides(env, RIDES, { json: false })).json()).accepted, 2);
+  for (const nothing of ['', 'Quatsch ohne Fahrten', '{"text":""}']) {
+    const r = await sendRides(env, nothing, { json: false });
+    assert.equal((await r.json()).accepted, 0, nothing);
+  }
+  assert.equal((await (await getInbox(env)).json()).items.length, 1);
+});
+
+test('Der Abliefer-Schlüssel darf nur abliefern, nichts lesen oder ändern', async () => {
+  const { env, subscription } = await setup();
+  env.INGEST_TOKEN = 'nur-zum-abliefern';
+  assert.equal((await getInbox(env, env.INGEST_TOKEN)).status, 401); // lesen verboten
+  const sub = await handleRequest(new Request('https://w.example/subscribe', { method: 'POST', headers: { Authorization: `Bearer ${env.INGEST_TOKEN}` }, body: JSON.stringify({ subscription, config }) }), env);
+  assert.equal(sub.status, 401);
+  assert.equal((await sendRides(env, RIDES, { token: 'falsch' })).status, 401);
+  assert.equal((await sendRides(env, RIDES, { token: env.API_TOKEN })).status, 200); // der Hauptschlüssel darf alles
+  // Ohne gesetzten INGEST_TOKEN lässt sich nicht mit leerem Wert einloggen
+  delete env.INGEST_TOKEN;
+  assert.equal((await sendRides(env, RIDES, { token: '' })).status, 401);
+});
+
+test('Der Posteingang ist nur für die eigene Webseite lesbar und die Größe ist begrenzt', async () => {
+  const { env } = await setup();
+  env.INGEST_TOKEN = 'x-token';
+  assert.equal((await getInbox(env)).headers.get('Access-Control-Allow-Origin'), 'https://ono3589.github.io');
+  assert.equal((await getInbox(env, undefined, 'https://boese.example')).headers.get('Access-Control-Allow-Origin'), null);
+  assert.equal((await sendRides(env, 'x'.repeat(20000), { json: false })).status, 413);
+});
+
+test('Nicht bestätigte Fahrten bleiben liegen, Löschen kennt nur gültige Kennungen', async () => {
+  const { env } = await setup();
+  env.INGEST_TOKEN = 'x-token';
+  await sendRides(env, RIDES);
+  await sendRides(env, '16.10.2026, 07:30;;10,3 km;27 min;180 kcal');
+  const items = (await (await getInbox(env)).json()).items;
+  assert.equal(items.length, 2);
+  const ack = await handleRequest(new Request('https://w.example/inbox/ack', { method: 'POST', headers: { Authorization: `Bearer ${env.API_TOKEN}` }, body: JSON.stringify({ ids: [items[0].id, '../sub:alles', 42] }) }), env);
+  assert.equal((await ack.json()).removed, 1); // ungültige Kennungen werden ignoriert
+  assert.equal((await (await getInbox(env)).json()).items.length, 1);
+});

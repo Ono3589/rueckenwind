@@ -2,7 +2,7 @@ import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } fr
 import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
 import { askPin, hideLock, showMessage } from './lock.js';
 import { parseHealthText } from './health.js';
-import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay } from './push.js';
+import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay, fetchInbox, ackInbox } from './push.js';
 import { TITLES } from './messages.js';
 import { midpoint, distanceM, searchAddress, currentPosition, fetchBikeRoute } from './geo.js';
 import { mapThumb, simplify } from './map.js';
@@ -154,6 +154,7 @@ document.addEventListener('visibilitychange', () => {
     return;
   }
   if (document.visibilityState === 'visible') {
+    pullInbox();
     const r = state.route;
     if (r.home && r.work && !r.distanceManual && r.distanceSource === 'luftlinie' && !distanceBusy) updateRouteDistance();
     weatherError = null;
@@ -434,6 +435,80 @@ function shortcutHelp() {
   <p class="note">Strecke, Dauer und Kalorien dürfen fehlen. Gibt es keine Trainings, reicht die Tagessumme der Raddistanz, etwa <code>12.10.2026;;20,8 km</code>. Die App verteilt sie auf Hin- und Rückweg. Die Bezeichnungen der Aktionen können je nach iOS-Version leicht abweichen.</p>`;
 }
 
+// Genauere Werte ersetzen eine von Hand eingetragene Fahrt am selben Tag in derselben Richtung
+function addHealthRide(it) {
+  state.rides = state.rides.filter((r) => !(r.source === 'manuell' && r.date === it.date && r.direction === it.direction));
+  state.rides.push({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'health' }), ref: it.ref });
+}
+
+// Fahrten, die der Dienst geliefert hat und die nicht zur Strecke passen, warten hier auf deine Entscheidung
+function pendingPreview() {
+  const items = (state.pendingRides ?? []).map((it) => ({ ...it, dup: state.rides.some((r) => r.ref === it.ref), checked: false, fits: false }));
+  return items.length ? { items, ignored: [], fromPending: true } : null;
+}
+
+let lastPull = 0;
+let pulling = false;
+
+// Holt neue Fahrten vom Dienst. Passende Pendelfahrten werden gleich übernommen, andere warten auf dich.
+async function pullInbox({ manual = false } = {}) {
+  const n = state.notify;
+  const base = normalizeUrl(n.url);
+  if (locked || pulling || !base || !n.token) return;
+  if (!manual && (n.autoPull === false || Date.now() - lastPull < 60000)) return;
+  pulling = true;
+  lastPull = Date.now();
+  try {
+    const { items } = await fetchInbox({ url: base, token: n.token });
+    if (!items?.length) {
+      if (manual) toast('Keine neuen Fahrten im Dienst');
+      return;
+    }
+    let added = 0;
+    let queued = 0;
+    for (const entry of items) {
+      const { items: rides } = parseHealthText(entry.text, { distanceKm: state.route.distanceKm, today: todayISO() });
+      for (const r of rides) {
+        if (state.rides.some((x) => x.ref === r.ref) || (state.pendingRides ?? []).some((x) => x.ref === r.ref)) continue;
+        if (r.fits) {
+          addHealthRide(r);
+          added++;
+        } else {
+          state.pendingRides = [...(state.pendingRides ?? []), { date: r.date, start: r.start, km: r.km, minutes: r.minutes, kcal: r.kcal, direction: r.direction, note: r.note, ref: r.ref }].slice(-50);
+          queued++;
+        }
+      }
+    }
+    persist();
+    if (session) await session.flush(); // erst sicher gespeichert, dann beim Dienst löschen
+    await ackInbox({ url: base, token: n.token, ids: items.map((i) => i.id) });
+    if (added || queued || manual) toast(added || queued ? `${added ? `${added} ${added === 1 ? 'Fahrt' : 'Fahrten'} aus Apple Health übernommen` : ''}${added && queued ? ', ' : ''}${queued ? `${queued} zur Prüfung` : ''}` : 'Nichts Neues, alles schon da');
+    if (!locked && ['heute', 'fahrten', 'bilanz'].includes(currentTab())) render();
+  } catch (e) {
+    console.warn('Fahrten holen fehlgeschlagen:', e.message);
+    if (manual) toast(`Holen fehlgeschlagen: ${e.message}`);
+  } finally {
+    pulling = false;
+  }
+}
+
+function autoSetupHelp() {
+  const base = normalizeUrl(state.notify.url) ?? 'https://rueckenwind-push.NAME.workers.dev';
+  return `<p class="sec-note">So kommen die Fahrten ohne Tippen in die App: Ein Kurzbefehl liest sie aus Apple Health und schickt sie an deinen Dienst. Die App holt sie dort ab, sobald du sie öffnest. Passende Pendelfahrten werden gleich übernommen.</p>
+  <ol class="steps">
+    <li>Im Terminal einen eigenen <strong>Abliefer-Token</strong> erzeugen (er darf nur Fahrten abliefern):<code class="codebox">node ~/Documents/GitHub/rueckenwind/rueckenwind/worker/scripts/setup-secrets.mjs ingest</code></li>
+    <li>Den Kurzbefehl aus „Fahrten → Kurzbefehl einrichten“ bauen, aber statt „In die Zwischenablage kopieren“ die Aktion <em>Inhalt von URL abrufen</em> nehmen:
+      <ol>
+        <li>URL: <code>${esc(base)}/rides</code></li>
+        <li>Methode <strong>POST</strong></li>
+        <li>Header <code>Authorization</code> mit dem Wert <code>Bearer </code> und dahinter dein Abliefer-Token</li>
+        <li>Anfragetext <strong>JSON</strong>, ein Feld <code>text</code> vom Typ Text, Wert: der kombinierte Text</li>
+      </ol>
+    </li>
+    <li>Als <strong>Automation</strong>: Persönliche Automation → „App“ → eBike Flow → „wird geschlossen“, <em>Sofort ausführen</em>. Gesundheitsdaten sind bei gesperrtem iPhone nicht lesbar, ein Auslöser mitten in der Nacht liefert deshalb nichts.</li>
+  </ol>`;
+}
+
 function loadImportPreview(text) {
   const { items, ignored } = parseHealthText(text, { distanceKm: state.route.distanceKm, today: todayISO() });
   for (const it of items) {
@@ -449,11 +524,13 @@ function loadImportPreview(text) {
 }
 
 function healthCard() {
+  if (!importPreview) importPreview = pendingPreview();
   if (importPreview) {
     const { items, ignored } = importPreview;
     const n = items.filter((i) => i.checked).length;
     return `<section class="card import">
-      <h2>${items.length} ${items.length === 1 ? 'Fahrt' : 'Fahrten'} gefunden</h2>
+      <h2>${items.length} ${items.length === 1 ? 'Fahrt' : 'Fahrten'} ${importPreview.fromPending ? 'zur Prüfung' : 'gefunden'}</h2>
+      ${importPreview.fromPending ? '<p class="note">Diese Fahrten kamen automatisch aus Apple Health, passen aber nicht zu deiner Pendelstrecke. Wähle aus, welche zählen sollen.</p>' : ''}
       <ul class="import-list">
         ${items
           .map(
@@ -736,7 +813,7 @@ function distanceBlock() {
 }
 
 const editingPlace = { home: false, work: false };
-const moreOpen = { car: false, fine: false, strava: false, rules: false, health: false, paste: false, notify: false, msgs: false };
+const moreOpen = { auto: false, car: false, fine: false, strava: false, rules: false, health: false, paste: false, notify: false, msgs: false };
 
 const more = (id, title, hint, body) => `
     <details class="more" data-more="${id}" ${moreOpen[id] ? 'open' : ''}>
@@ -1023,7 +1100,9 @@ function renderSettings() {
 
   <section class="group" id="strava"><h2>Kiox-Fahrten</h2><div class="card settings">
     <p class="note">Deine Fahrten kommen über <strong>Apple Health</strong> in die App: Ein Kurzbefehl legt sie in die Zwischenablage, auf „Fahrten“ übernimmst du sie mit einem Tipp. Ohne das trägst du sie von Hand ein.</p>
-    <a class="btn" href="#fahrten" data-scroll="health">Zu den Fahrten</a>
+    <label class="check"><input type="checkbox" data-path="notify.autoPull" ${state.notify.autoPull !== false ? 'checked' : ''}><span>Fahrten automatisch vom Dienst holen</span></label>
+    <div class="actions"><button class="btn" data-action="inbox-pull">Jetzt holen</button><a class="btn ghost" href="#fahrten" data-scroll="health">Zu den Fahrten</a></div>
+    ${more('auto', 'Automatik einrichten', 'Kurzbefehl schickt Fahrten an deinen Dienst', autoSetupHelp())}
     ${more(
       'strava',
       'Strava',
@@ -1065,7 +1144,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.12 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.13 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1210,6 +1289,7 @@ function setPlace(which, place) {
 const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
+  'inbox-pull': () => pullInbox({ manual: true }),
   'notify-test-evening': () => testNotify('abend'),
   ask: (el) => {
     const a = el.dataset.a;
@@ -1246,16 +1326,17 @@ const actions = {
     loadImportPreview(text);
   },
   'health-discard': () => {
+    if (importPreview?.fromPending) {
+      state.pendingRides = [];
+      persist();
+    }
     importPreview = null;
     renderRides();
   },
   'health-apply': () => {
     const chosen = (importPreview?.items ?? []).filter((i) => i.checked && !i.dup);
-    for (const it of chosen) {
-      // Genauere Werte ersetzen eine von Hand eingetragene Fahrt am selben Tag in derselben Richtung
-      state.rides = state.rides.filter((r) => !(r.source === 'manuell' && r.date === it.date && r.direction === it.direction));
-      state.rides.push({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'health' }), ref: it.ref });
-    }
+    for (const it of chosen) addHealthRide(it);
+    if (importPreview?.fromPending) state.pendingRides = (state.pendingRides ?? []).filter((p) => !chosen.some((c) => c.ref === p.ref));
     importPreview = null;
     persist();
     toast(`${chosen.length} ${chosen.length === 1 ? 'Fahrt' : 'Fahrten'} übernommen`);
@@ -1776,6 +1857,7 @@ async function handleOAuthReturn() {
 
 function boot() {
   render();
+  pullInbox();
   schedulePushSync();
   scheduleDayStatus();
   handleOAuthReturn();

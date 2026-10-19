@@ -563,3 +563,9 @@ code { font-size: 13px; padding: 1px 6px; border-radius: 6px; background: var(--
 .ask-buttons .wide { grid-column: 1 / -1; min-height: 48px; font-size: 16px; }
 .check { display: flex; align-items: center; gap: 12px; font-size: 15px; cursor: pointer; }
 .check input { width: 22px; height: 22px; flex: none; }
+
+/* Lange Befehle und Adressen in Anleitungen dürfen umbrechen, statt aus der Karte zu laufen */
+.steps, .steps li, .more-body, .settings { min-width: 0; }
+.steps li { overflow-wrap: anywhere; }
+.steps code { white-space: normal; overflow-wrap: anywhere; }
+.codebox { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
