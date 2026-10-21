@@ -230,3 +230,22 @@ test('Leere Antwort: der Status sagt, was Bosch geschickt hat', async () => {
   assert.equal(lastInfo.http, 200);
   assert.equal(lastInfo.total, 0);
 });
+
+test('Leere Liste: der Dienst zählt die freigegebenen Bikes, um die Ursache zu zeigen', async () => {
+  const mk = (bikes) => makeEnv(async (url) => {
+    if (String(url).includes('/token')) return new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', expires_in: 300 }));
+    if (String(url).includes('/bikes')) return bikes === null ? new Response('{}', { status: 403 }) : new Response(JSON.stringify({ bikes: Array.from({ length: bikes }, (_, i) => ({ id: `b${i}` })) }));
+    return new Response(JSON.stringify({ activitySummaries: [], pagination: { total: 0 } }));
+  });
+  for (const [bikes, expected] of [[0, { http: 200, count: 0 }], [2, { http: 200, count: 2 }], [null, { http: 403, count: null }]]) {
+    const env = mk(bikes);
+    await connect(env);
+    const { lastInfo } = await (await get(env, '/bosch/status')).json();
+    assert.deepEqual(lastInfo.bikes, expected);
+  }
+  // mit Fahrten wird die Bike-Liste nicht extra abgefragt
+  const bosch = fakeBosch({ activities: [ride('a1', '2026-10-15T05:31:00Z')] });
+  const env = makeEnv(bosch.impl);
+  await connect(env);
+  assert.equal(bosch.calls.api.some((c) => c.url.includes('/bikes')), false);
+});

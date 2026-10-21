@@ -8,6 +8,7 @@ export const AUTH_URL = 'https://p9.authz.bosch.com/auth/realms/obc/protocol/ope
 export const TOKEN_URL = 'https://p9.authz.bosch.com/auth/realms/obc/protocol/openid-connect/token';
 export const API_BASE = 'https://api.bosch-ebike.com';
 export const ACTIVITIES_PATH = '/activity/smart-system/v1/activities';
+export const BIKES_PATH = '/bike-profile/smart-system/v1/bikes';
 
 const CONN = 'bosch:conn';
 const STATE = 'boschstate:';
@@ -130,7 +131,20 @@ async function getActivities(env, conn, now, fetchImpl) {
   // Bekannter Name zuerst, sonst die erste Liste in der Antwort: so geht keine Fahrt verloren, falls Bosch das Feld anders nennt
   const named = body?.activitySummaries ?? body?.activities ?? body?.items;
   const list = Array.isArray(named) ? named : Array.isArray(body) ? body : Object.values(body && typeof body === 'object' ? body : {}).find(Array.isArray) ?? [];
-  return { activities: list, conn: auth.conn, shape: { http: res.status, bodyKeys: body && typeof body === 'object' ? Object.keys(body).slice(0, 12) : [], total: body?.pagination?.total ?? null } };
+  return { activities: list, conn: auth.conn, access: auth.access, shape: { http: res.status, bodyKeys: body && typeof body === 'object' ? Object.keys(body).slice(0, 12) : [], total: body?.pagination?.total ?? null } };
+}
+
+// Wie viele Bikes hat Bosch für diese App freigegeben? Unterscheidet „Freigabe am Bike fehlt“ von „Fahrten noch nicht bei Bosch“.
+async function countBikes(auth, fetchImpl) {
+  try {
+    const res = await fetchImpl(`${API_BASE}${BIKES_PATH}`, { headers: { Authorization: `Bearer ${auth.access}`, Accept: 'application/json' } });
+    if (!res.ok) return { http: res.status, count: null };
+    const body = await res.json().catch(() => null);
+    const list = Array.isArray(body?.bikes) ? body.bikes : Array.isArray(body) ? body : [];
+    return { http: res.status, count: list.length };
+  } catch {
+    return { http: 0, count: null };
+  }
 }
 
 // ---------- Umrechnen in die Zeilen, die die App versteht ----------
@@ -171,7 +185,7 @@ export async function syncBosch(env, now, { tz, localParts, putInbox, fetchImpl 
   if (!conn) return { connected: false };
   let current = conn;
   try {
-    const { activities, conn: updated, shape } = await getActivities(env, conn, now, fetchImpl);
+    const { activities, conn: updated, shape, access } = await getActivities(env, conn, now, fetchImpl);
     current = updated;
     const seen = new Set(current.seen ?? []);
     const since = now.getTime() - LOOKBACK_DAYS * 86400000;
@@ -192,7 +206,8 @@ export async function syncBosch(env, now, { tz, localParts, putInbox, fetchImpl 
     const first = activities[0];
     const fields = first && typeof first === 'object' ? Object.keys(first).slice(0, 30) : [];
     const unreadable = activities.filter((a) => !parseStart(a?.startTime)).length;
-    const lastInfo = { ...shape, fetched: activities.length, imported: lines.length, unreadable, fields };
+    const bikes = activities.length === 0 ? await countBikes({ access }, fetchImpl) : null;
+    const lastInfo = { ...shape, fetched: activities.length, imported: lines.length, unreadable, fields, ...(bikes ? { bikes } : {}) };
     const saved = { ...current, seen: [...seen].slice(-MAX_SEEN), lastCheck: now.toISOString(), lastError: null, lastInfo, lastRide: newest ? newest.toISOString() : current.lastRide };
     await env.SUBS.put(CONN, JSON.stringify(saved));
     return { connected: true, fetched: activities.length, imported: lines.length, fields, lastInfo };

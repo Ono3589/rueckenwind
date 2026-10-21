@@ -511,7 +511,17 @@ function boschDiag(i) {
   const lead = i.fetched === 0 ? 'Bosch hat bei der letzten Abfrage <strong>keine Fahrten</strong> geliefert.' : `Bosch hat bei der letzten Abfrage <strong>${i.fetched} ${i.fetched === 1 ? 'Fahrt' : 'Fahrten'}</strong> geliefert, ${i.imported} neu.`;
   const bad = i.unreadable ? ` Bei ${i.unreadable} fehlt eine lesbare Startzeit.` : '';
   const shape = i.fetched === 0 ? ` Antwort von Bosch: HTTP ${esc(i.http ?? '?')}, Felder: ${i.bodyKeys?.length ? esc(i.bodyKeys.join(', ')) : 'keine'}${i.total != null ? `, Gesamtzahl ${esc(i.total)}` : ''}.` : '';
-  return `<p class="note">${lead}${bad}${shape}</p>${i.fields?.length ? `<details class="diag"><summary>Felder einer Fahrt</summary><code class="codebox">${esc(i.fields.join(', '))}</code></details>` : ''}`;
+  let why = '';
+  if (i.fetched === 0 && i.bikes) {
+    const b = i.bikes;
+    why =
+      b.count === 0
+        ? '<p class="note warn"><strong>Bosch hat für Rückenwind kein Bike freigegeben.</strong> Schalte in der eBike-Flow-App oder auf flow.bosch-ebike.com unter Data Act die Freigabe für „Rückenwind“ <em>an deinem Bike</em> ein (der Schalter gilt pro Bike) und tippe dann auf „Jetzt abfragen“.</p>'
+        : b.count > 0
+          ? `<p class="note">Bosch kennt ${b.count} ${b.count === 1 ? 'Bike' : 'Bikes'} mit Freigabe, hat aber noch keine Fahrt gespeichert. Öffne die eBike-Flow-App und prüfe, ob die Fahrt dort in der Aktivitätenliste steht. Sie kommt erst bei Bosch an, wenn die Flow-App sie von der Kiox geholt und hochgeladen hat.</p>`
+          : `<p class="note warn">Auch die Bike-Liste konnte nicht gelesen werden (HTTP ${esc(b.http ?? '?')}). Prüfe die Freigabe im Data-Act-Portal.</p>`;
+  }
+  return `<p class="note">${lead}${bad}${shape}</p>${why}${i.fields?.length ? `<details class="diag"><summary>Felder einer Fahrt</summary><code class="codebox">${esc(i.fields.join(', '))}</code></details>` : ''}`;
 }
 
 function boschBody() {
