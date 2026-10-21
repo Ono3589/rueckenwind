@@ -2,7 +2,7 @@ import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } fr
 import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
 import { askPin, hideLock, showMessage } from './lock.js';
 import { parseHealthText } from './health.js';
-import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay, fetchInbox, ackInbox } from './push.js';
+import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay, fetchInbox, ackInbox, boschStatus, boschStart, boschSync, boschDisconnect } from './push.js';
 import { TITLES } from './messages.js';
 import { commuteScene, cyclist } from './scene.js';
 import { dayChart, savingsChart, weeksChart as weeksChartSvg, cumulativeSavings } from './charts.js';
@@ -99,6 +99,7 @@ function render() {
   document.querySelector('.tabbar')?.style.setProperty('--tab-i', tabOrder.indexOf(tab));
   shownTab = tab;
   tabs[tab]();
+  if (tab === 'einstellungen') loadBosch();
   paint(); // auch für die frühen Zustände (Start, Laden, Fehler); schon Gezeigtes bleibt stehen
 }
 window.addEventListener('hashchange', () => {
@@ -174,6 +175,7 @@ document.addEventListener('visibilitychange', () => {
   }
   if (document.visibilityState === 'visible') {
     pullInbox();
+    if (currentTab() === 'einstellungen') loadBosch({ force: true });
     const r = state.route;
     if (r.home && r.work && !r.distanceManual && r.distanceSource === 'luftlinie' && !distanceBusy) updateRouteDistance();
     weatherError = null;
@@ -485,6 +487,98 @@ async function pullInbox({ manual = false } = {}) {
     if (manual) toast(`Holen fehlgeschlagen: ${e.message}`);
   } finally {
     pulling = false;
+  }
+}
+
+// ---------- Bosch eBike Flow (Data Act) ----------
+
+let boschInfo = null; // Stand vom Dienst: { connected, keyReady, lastCheck, lastRide, lastError, needsLogin } oder { problem }
+let boschAt = 0;
+let boschBusy = false;
+
+const ago = (iso) => {
+  if (!iso) return 'noch nie';
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (min < 1) return 'gerade eben';
+  if (min < 60) return `vor ${min} min`;
+  if (min < 24 * 60) return `vor ${Math.round(min / 60)} Std.`;
+  return `vor ${Math.round(min / 1440)} Tagen`;
+};
+
+function boschBody() {
+  const base = normalizeUrl(state.notify.url);
+  const info = boschInfo;
+  if (!base || !state.notify.token) {
+    return '<p class="note">Dafür brauchst du den Push-Dienst (Adresse und Token stehen unter <a href="#einstellungen" data-scroll="notify">Morgenmeldung</a>). Er fragt Bosch alle 15 Minuten nach neuen Fahrten.</p>';
+  }
+  if (!info) return '<p class="note">Prüfe die Verbindung …</p>';
+  const dir = '~/Documents/GitHub/rueckenwind/rueckenwind/worker';
+  if (info.problem) {
+    return `<p class="note warn">${esc(info.problem)}</p>
+      <p class="note">Ist der Dienst auf dem neuesten Stand? Aktualisieren geht im Terminal:</p>
+      <code class="codebox">cd ${dir} &amp;&amp; npx wrangler@4 deploy</code>
+      <div class="actions"><button class="btn" data-action="bosch-refresh">Noch einmal prüfen</button></div>`;
+  }
+  if (info.connected) {
+    const bad = info.lastError;
+    return `<p class="bosch-state ${bad ? 'bad' : 'ok'}"><i></i><strong>${info.needsLogin ? 'Anmeldung abgelaufen' : bad ? 'Verbunden, letzte Abfrage mit Problem' : 'Verbunden'}</strong></p>
+      <p class="note">Letzte Abfrage ${esc(ago(info.lastCheck))}. Letzte Fahrt bei Bosch: ${info.lastRide ? esc(new Date(info.lastRide).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) : 'noch keine gesehen'}.</p>
+      ${bad ? `<p class="note warn">${esc(bad)}</p>` : ''}
+      <p class="note">Neue Fahrten kommen automatisch. Bosch bekommt sie erst, wenn die eBike-Flow-App sie von der Kiox geholt hat, das passiert meist von selbst kurz nach der Fahrt.</p>
+      <div class="actions">
+        <button class="btn primary" data-action="bosch-sync" ${boschBusy ? 'disabled' : ''}>${I.refresh}Jetzt abfragen</button>
+        ${info.needsLogin ? '<button class="btn" data-action="bosch-connect">Neu verbinden</button>' : ''}
+        <button class="btn ghost" data-action="bosch-disconnect">Trennen</button>
+      </div>`;
+  }
+  if (!info.keyReady) {
+    return `<p class="note">Der Dienst braucht einmalig einen Schlüssel, mit dem er deine Bosch-Zugangsdaten verschlüsselt. Im Terminal:</p>
+      <code class="codebox">node ${dir}/scripts/setup-secrets.mjs bosch
+cd ${dir} &amp;&amp; npx wrangler@4 deploy</code>
+      <div class="actions"><button class="btn" data-action="bosch-refresh">Noch einmal prüfen</button></div>`;
+  }
+  const redirect = `${base}/bosch/callback`;
+  const login = `${location.origin}${location.pathname}#einstellungen`;
+  return `<p class="note">Fahrten kommen vollautomatisch aus deinem Bosch-Konto, ohne Kurzbefehl und ohne Einfügen. Möglich macht das die offizielle Schnittstelle nach dem EU Data Act. Sie kostet nichts.</p>
+    <ol class="steps">
+      <li>Im <a href="https://portal.bosch-ebike.com/data-act/app" target="_blank" rel="noopener">Bosch Data-Act-Portal</a> als Datenempfänger eine App anlegen. Name: <code>Rückenwind</code>, „Confidential client“ aus. Login URL: <code class="codebox">${esc(login)}</code> Redirect URI: <code class="codebox">${esc(redirect)}</code></li>
+      <li>Warten, bis Bosch die App freigibt (Minuten bis ein paar Tage). Dann im Flow-Portal oder in der eBike-Flow-App unter <strong>Data Act</strong> die Freigabe für „Rückenwind“ <strong>und für dein Bike</strong> einschalten.</li>
+      <li>Die Client-ID hier eintragen und verbinden. Danach das Bosch-Fenster mit „Fertig“ schließen.</li>
+    </ol>
+    <label class="field">Client-ID<span class="input"><input type="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="euda-…" data-path="bosch.clientId" value="${esc(state.bosch?.clientId ?? '')}"></span></label>
+    <div class="actions"><button class="btn primary" data-action="bosch-connect" ${boschBusy ? 'disabled' : ''}>Mit Bosch verbinden</button></div>`;
+}
+
+function paintBosch() {
+  const el = view.querySelector('[data-bosch]');
+  if (el) el.innerHTML = boschBody();
+}
+
+async function loadBosch({ force = false } = {}) {
+  const base = normalizeUrl(state.notify.url);
+  if (locked || !base || !state.notify.token || (!force && Date.now() - boschAt < 20000)) return;
+  boschAt = Date.now();
+  try {
+    boschInfo = await boschStatus({ url: base, token: state.notify.token });
+  } catch (e) {
+    boschInfo = { problem: e.message };
+  }
+  if (currentTab() === 'einstellungen') paintBosch();
+}
+
+async function boschAction(fn) {
+  const base = normalizeUrl(state.notify.url);
+  if (!base || !state.notify.token || boschBusy) return;
+  boschBusy = true;
+  paintBosch();
+  try {
+    await fn(base, state.notify.token);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    boschBusy = false;
+    boschAt = 0;
+    await loadBosch({ force: true });
   }
 }
 
@@ -1128,8 +1222,10 @@ function renderSettings() {
     )}
   </div></section>
 
-  <section class="group" id="strava"><h2>Kiox-Fahrten</h2><div class="card settings">
-    <p class="note">Deine Fahrten kommen über <strong>Apple Health</strong> in die App: Ein Kurzbefehl legt sie in die Zwischenablage, auf „Fahrten“ übernimmst du sie mit einem Tipp. Ohne das trägst du sie von Hand ein.</p>
+  <section class="group" id="bosch"><h2>Bosch eBike Flow</h2><div class="card settings" data-bosch>${boschBody()}</div></section>
+
+  <section class="group" id="strava"><h2>Fahrten per Apple Health</h2><div class="card settings">
+    <p class="note">Die Alternative zu Bosch direkt: Fahrten laufen über <strong>Apple Health</strong> in die App. Ein Kurzbefehl legt sie in die Zwischenablage, auf „Fahrten“ übernimmst du sie mit einem Tipp, oder er schickt sie an deinen Dienst (Automatik unten).</p>
     <label class="check"><input type="checkbox" data-path="notify.autoPull" ${state.notify.autoPull !== false ? 'checked' : ''}><span>Fahrten automatisch vom Dienst holen</span></label>
     <div class="actions"><button class="btn" data-action="inbox-pull">Jetzt holen</button><a class="btn ghost" href="#fahrten" data-scroll="health">Zu den Fahrten</a></div>
     ${more('auto', 'Automatik einrichten', 'Kurzbefehl schickt Fahrten an deinen Dienst', autoSetupHelp())}
@@ -1174,7 +1270,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.14 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.15 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1320,6 +1416,31 @@ const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
   'inbox-pull': () => pullInbox({ manual: true }),
+  'bosch-refresh': () => loadBosch({ force: true }),
+  'bosch-connect': () => {
+    const id = String(state.bosch?.clientId ?? '').trim();
+    if (!/^euda-[\w-]{4,80}$/.test(id)) return toast('Die Client-ID beginnt mit „euda-“. Kopiere sie aus dem Bosch-Portal.');
+    state.bosch.clientId = id;
+    persist();
+    return boschAction(async (url, token) => {
+      const { url: login } = await boschStart({ url, token, clientId: id });
+      location.href = login;
+    });
+  },
+  'bosch-sync': () =>
+    boschAction(async (url, token) => {
+      const r = await boschSync({ url, token });
+      if (r.error) return toast(r.error);
+      await pullInbox({ manual: true });
+      if (!r.imported) toast(r.fetched ? 'Bosch abgefragt, nichts Neues' : 'Bosch hat noch keine Fahrten geliefert');
+    }),
+  'bosch-disconnect': () => {
+    if (!confirm('Verbindung zu Bosch trennen? Schon übernommene Fahrten bleiben.')) return;
+    return boschAction(async (url, token) => {
+      await boschDisconnect({ url, token });
+      toast('Von Bosch getrennt');
+    });
+  },
   'notify-test-evening': () => testNotify('abend'),
   ask: (el) => {
     const a = el.dataset.a;
@@ -1885,7 +2006,19 @@ async function handleOAuthReturn() {
 
 // ---------- Start ----------
 
+// Rückkehr von der Bosch-Anmeldung: der Dienst hängt ?bosch=ok oder ?bosch=fehler an die Adresse
+function handleBoschReturn() {
+  const q = new URLSearchParams(location.search);
+  const outcome = q.get('bosch');
+  if (!outcome) return;
+  const reason = q.get('grund');
+  history.replaceState(null, '', `${location.pathname}${location.hash}`);
+  toast(outcome === 'ok' ? 'Mit Bosch verbunden. Neue Fahrten kommen jetzt automatisch.' : `Verbindung zu Bosch fehlgeschlagen${reason ? `: ${reason}` : ''}`);
+  loadBosch({ force: true }).then(() => outcome === 'ok' && pullInbox({ manual: true }));
+}
+
 function boot() {
+  handleBoschReturn();
   render();
   pullInbox();
   schedulePushSync();

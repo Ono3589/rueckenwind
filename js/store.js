@@ -44,6 +44,7 @@ export const DEFAULTS = {
     maxGust: 50,
   },
   notify: { enabled: false, time: '06:30', eveningOn: true, eveningAt: '18:30', answeredDate: '', url: '', token: '', autoPull: true }, // Morgenmeldung (Push-Dienst)
+  bosch: { clientId: '' }, // Client-ID der eigenen App im Bosch-Data-Act-Portal (öffentlich, kein Geheimnis)
   security: { autoLockMin: 1 }, // Minuten im Hintergrund, bis die App sich sperrt (0 = sofort)
   customPresets: [], // { id, label, rules } – selbst gespeicherte Radwetter-Profile
   car: {

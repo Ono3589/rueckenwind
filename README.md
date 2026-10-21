@@ -39,6 +39,31 @@ Unter Einstellungen → Sicherheit lässt sich eine PIN (6, 8 oder 10 Ziffern) e
 - Es gibt keinen Server und kein Konto. Eine Anmeldung mit Einmalcode (OTP) wäre nur mit einem Server sinnvoll, etwa für Synchronisation oder eine Team-Funktion.
 - Kartenkacheln und der Wetter-Zwischenspeicher werden bei aktiver Sperre nicht gespeichert, weil sie die Gegend deiner Route verraten.
 
+## Fahrten direkt von Bosch (vollautomatisch)
+
+Bosch muss Besitzern in der EU ihre Daten nach dem **EU Data Act** herausgeben und bietet dafür eine kostenlose Schnittstelle. Dein Push-Dienst fragt sie alle 15 Minuten ab und legt neue Fahrten in den Eingang, aus dem die App sie abholt. Kein Kurzbefehl, kein Einfügen.
+
+```
+Kiox → eBike-Flow-App → Bosch-Cloud ← Push-Dienst (alle 15 Min.) → Eingang → Rückenwind
+```
+
+Die Anmeldung läuft als OAuth 2.0 mit PKCE als öffentlicher Client. Es gibt kein Client-Geheimnis, dein Bosch-Passwort sieht weder die App noch der Dienst. Die Bosch-Zugangsdaten liegen nur verschlüsselt (AES-256-GCM) beim Dienst.
+
+**Einrichten (einmalig):**
+
+1. Im [Bosch Data-Act-Portal](https://portal.bosch-ebike.com/data-act/app) als Datenempfänger eine App „Rückenwind“ anlegen, „Confidential client“ aus. Login URL: `https://DEIN-NAME.github.io/rueckenwind/#einstellungen`, Redirect URI: `https://DEIN-DIENST.workers.dev/bosch/callback`. Beides zeigt dir die App unter Einstellungen → Bosch eBike Flow fertig an. Die Adressen müssen zeichengenau stimmen.
+2. Warten, bis Bosch die App freigibt (Minuten bis ein paar Tage). Danach im Flow-Portal (flow.bosch-ebike.com) oder in der eBike-Flow-App unter **Data Act** die Freigabe für „Rückenwind“ **und für dein Bike** einschalten. Ohne den Schalter am Bike verweigert Bosch den Zugriff (403).
+3. Einmal den Schlüssel für die Verschlüsselung anlegen und den Dienst aktualisieren:
+   ```bash
+   node worker/scripts/setup-secrets.mjs bosch
+   cd worker && npx wrangler@4 deploy
+   ```
+4. In der App unter Einstellungen → Bosch eBike Flow die Client-ID (beginnt mit `euda-`) eintragen und „Mit Bosch verbinden“ tippen. Nach der Bosch-Anmeldung das Fenster mit „Fertig“ schließen.
+
+**Was dabei passiert:** Der Dienst holt höchstens die letzten 14 Tage und jede Fahrt nur einmal. Er speichert Datum, Startzeit, Strecke, Dauer und Kalorien, keine GPS-Spur. Passende Pendelfahrten übernimmt die App beim Öffnen von selbst, alles andere landet unter „Fahrten → zur Prüfung“. Hin oder Rück bestimmt wie bisher die Startzeit.
+
+**Grenzen:** Nur Bosch-Konten aus der EU und nur Smart-System-Bikes (die mit der Flow-App). Bosch veröffentlicht eine Fahrt erst, wenn die eBike-Flow-App sie von der Kiox geholt hat. Die Felder der Schnittstelle (`distance`, `durationWithoutStops`, `caloriesBurned`, `startTime`) stammen aus einer laufenden Open-Source-Integration, Boschs eigene Dokumentation liegt hinter dem Portal-Login. Zeigt „Jetzt abfragen“ Fahrten an, die nicht ankommen, hilft eine Rückmeldung mit der Fehlermeldung aus der Karte.
+
 ## Fahrten aus Apple Health (Kiox → eBike Flow → Apple Health → Rückenwind)
 
 Bosch bietet keine öffentliche Kiox-API. Der kostenlose Weg geht über Apple Health:
@@ -124,6 +149,7 @@ Wichtig: Alle Befehle im Ordner `worker/` ausführen (die Eingabezeile endet auf
 | `js/vault.js` | App-Sperre: Verschlüsselung der Daten mit einem PIN-Schlüssel |
 | `js/lock.js` | Sperrbildschirm mit Zahlenfeld |
 | `js/app.js` | Oberfläche: Heute, Fahrten, Bilanz, Einstellungen |
+| `worker/src/bosch.js` | Bosch-Data-Act im Push-Dienst: Anmeldung (PKCE), verschlüsselte Tokens, Abfrage neuer Fahrten, Umrechnung in Zeilen für die App |
 | `js/push.js` | Anmeldung für die Morgenmeldung beim eigenen Push-Dienst |
 | `js/messages.js` | Die Reihe der Morgenmeldungen und ihre Auswahl |
 | `js/scene.js` | Die bewegte Pendelszene: Radfahrer mit tretenden Beinen, Stadt, Straße, Wind und Regen, je nach Wetter |

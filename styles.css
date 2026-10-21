@@ -895,3 +895,9 @@ html[data-slide='back']::view-transition-new(root) { animation-name: vt-in-left;
 
 /* Kein Zoomen: die App verhält sich wie eine native App (Doppeltippen und Aufziehen sind aus) */
 html { touch-action: manipulation; }
+
+/* ---------- Bosch-Verbindung ---------- */
+.bosch-state { display: flex; align-items: center; gap: 9px; margin: 0; font-size: var(--fs-body); }
+.bosch-state i { width: 10px; height: 10px; border-radius: 50%; background: var(--go); box-shadow: 0 0 0 4px color-mix(in srgb, var(--go) 22%, transparent); }
+.bosch-state.bad i { background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent); }
+.steps .codebox { margin: 6px 0; }

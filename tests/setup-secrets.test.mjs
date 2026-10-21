@@ -58,3 +58,16 @@ test('Mit „ingest“ wird nur der Abliefer-Schlüssel gesetzt, die anderen ble
   assert.match(token, /^[0-9a-f]{48}$/);
   assert.ok(r.stdout.includes(token));
 });
+
+test('Mit „bosch“ wird nur der Bosch-Schlüssel gesetzt und nie angezeigt', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rw-'));
+  const fake = join(dir, 'fake.sh');
+  writeFileSync(fake, `#!/bin/sh\necho "$3" >> "${dir}/names.txt"\ncat > "${dir}/$3.val"\n`);
+  chmodSync(fake, 0o755);
+  const r = spawnSync('node', [join(process.cwd(), 'worker/scripts/setup-secrets.mjs'), 'bosch'], { env: { ...process.env, WRANGLER_CMD: fake }, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(dir, 'names.txt'), 'utf8').trim(), 'BOSCH_KEY');
+  const key = readFileSync(join(dir, 'BOSCH_KEY.val'), 'utf8');
+  assert.match(key, /^[0-9a-f]{64}$/);
+  assert.ok(!r.stdout.includes(key));
+});

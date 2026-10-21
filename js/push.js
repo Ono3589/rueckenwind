@@ -132,3 +132,20 @@ export async function fetchInbox({ url, token }) {
 export async function ackInbox({ url, token, ids }) {
   if (ids.length) await call(url, token, '/inbox/ack', { ids });
 }
+
+// Bosch eBike Flow (Data Act): Anmeldung und Abfrage laufen über deinen Dienst, die App zeigt nur den Stand
+export async function boschStatus({ url, token }) {
+  return call(url, token, '/bosch/status');
+}
+
+export async function boschStart({ url, token, clientId }) {
+  return call(url, token, '/bosch/start', { clientId });
+}
+
+export async function boschSync({ url, token }) {
+  return call(url, token, '/bosch/sync', {});
+}
+
+export async function boschDisconnect({ url, token }) {
+  return call(url, token, '/bosch/disconnect', {});
+}

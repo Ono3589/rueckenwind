@@ -6,6 +6,7 @@ import { fetchForecast, assessDay } from '../../js/weather.js';
 import { buildNotification, buildEveningNotification } from '../../js/messages.js';
 import { sendPush } from './webpush.js';
 import { parseHealthText } from '../../js/health.js';
+import { startLogin, finishLogin, syncBosch, boschStatus, boschDisconnect, BoschError } from './bosch.js';
 
 const PREFIX = 'sub:';
 const INBOX = 'inbox:'; // Fahrten, die ein Kurzbefehl aus Apple Health geschickt hat und die die App noch abholt
@@ -177,6 +178,34 @@ const reply = (req, env, body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(req, env) } });
 
 const isoDate = (d) => d.toISOString().slice(0, 10);
+
+// Ortszeit für die Fahrten: die Zeitzone des (ersten) angemeldeten Geräts, sonst Berlin
+async function boschTz(env) {
+  const { keys } = await env.SUBS.list({ prefix: PREFIX });
+  for (const { name } of keys) {
+    const r = await env.SUBS.get(name, 'json');
+    if (validConfig(r?.config)) return r.config.tz;
+  }
+  return 'Europe/Berlin';
+}
+
+export async function runBoschSync(env, now = new Date()) {
+  return syncBosch(env, now, {
+    tz: await boschTz(env),
+    localParts,
+    fetchImpl: env.fetchImpl ?? fetch,
+    putInbox: (text) => env.SUBS.put(INBOX + newInboxId(now), JSON.stringify({ text, received: now.toISOString(), source: 'bosch' }), { expirationTtl: INBOX_TTL }),
+  });
+}
+
+const appUrl = (env) => env.APP_URL || `${String(env.ALLOWED_ORIGINS ?? '').split(',')[0].trim()}/rueckenwind/`;
+const backToApp = (env, outcome, reason = '') => {
+  const u = new URL(appUrl(env));
+  u.searchParams.set('bosch', outcome);
+  if (reason) u.searchParams.set('grund', reason.slice(0, 160));
+  u.hash = '#einstellungen';
+  return new Response(null, { status: 302, headers: { Location: u.toString(), 'Cache-Control': 'no-store' } });
+};
 const newInboxId = (now) => `${now.getTime()}-${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
 
 export async function handleRequest(req, env, now = new Date(), forecastFor = fetchForecast) {
@@ -199,6 +228,21 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
       if (v) items.push({ id: name.slice(INBOX.length), text: v.text, received: v.received });
     }
     return reply(req, env, { items });
+  }
+  // Rückkehr von der Bosch-Anmeldung: der Browser kommt ohne Token, geschützt ist das durch den einmaligen state-Wert
+  if (req.method === 'GET' && url.pathname === '/bosch/callback') {
+    if (url.searchParams.get('error')) return backToApp(env, 'fehler', 'Bosch hat die Freigabe abgelehnt oder abgebrochen.');
+    try {
+      await finishLogin(env, { code: url.searchParams.get('code'), state: url.searchParams.get('state') }, now, env.fetchImpl ?? fetch);
+      await runBoschSync(env, now); // gleich die ersten Fahrten holen
+      return backToApp(env, 'ok');
+    } catch (e) {
+      return backToApp(env, 'fehler', e instanceof BoschError ? e.message : 'Unerwarteter Fehler bei der Anmeldung.');
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/bosch/status') {
+    if (!isMain) return reply(req, env, { error: 'Token falsch' }, 401);
+    return reply(req, env, await boschStatus(env));
   }
   if (req.method !== 'POST') return reply(req, env, { error: 'nicht gefunden' }, 404);
 
@@ -235,6 +279,17 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
     for (const id of ids) await env.SUBS.delete(INBOX + id);
     return reply(req, env, { ok: true, removed: ids.length });
   }
+
+  if (url.pathname === '/bosch/start') {
+    try {
+      const { url: loginUrl, redirectUri } = await startLogin(env, { origin: url.origin, clientId: body?.clientId }, now);
+      return reply(req, env, { ok: true, url: loginUrl, redirectUri });
+    } catch (e) {
+      return reply(req, env, { error: e instanceof BoschError ? e.message : String(e?.message ?? e) }, 400);
+    }
+  }
+  if (url.pathname === '/bosch/sync') return reply(req, env, await runBoschSync(env, now));
+  if (url.pathname === '/bosch/disconnect') return reply(req, env, await boschDisconnect(env));
 
   const endpoint = body?.subscription?.endpoint ?? body?.endpoint;
   if (typeof endpoint !== 'string') return reply(req, env, { error: 'Push-Adresse fehlt' }, 400);
@@ -274,5 +329,5 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
 
 export default {
   fetch: (req, env) => handleRequest(req, env),
-  scheduled: (_event, env, ctx) => ctx.waitUntil(runSchedule(env)),
+  scheduled: (_event, env, ctx) => ctx.waitUntil(Promise.all([runSchedule(env), runBoschSync(env).catch((e) => console.warn('Bosch-Abfrage fehlgeschlagen:', e?.message)) ])),
 };

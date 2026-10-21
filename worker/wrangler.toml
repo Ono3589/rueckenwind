@@ -12,6 +12,8 @@ crons = ["*/15 * * * *"]
 ALLOWED_ORIGINS = "https://ono3589.github.io"
 # Wer sendet? Muss eine https- oder mailto-Adresse sein. Keine privaten Daten eintragen.
 VAPID_SUBJECT = "https://ono3589.github.io/rueckenwind/"
+# Hierhin kehrt der Browser nach der Bosch-Anmeldung zurück
+APP_URL = "https://ono3589.github.io/rueckenwind/"
 
 [[kv_namespaces]]
 binding = "SUBS"
@@ -21,3 +23,4 @@ id = "cc3eace6b04e418ab4e00ee833796adc"
 #   VAPID_PUBLIC       öffentlicher Schlüssel (aus gen-vapid.mjs)
 #   VAPID_PRIVATE_JWK  privater Schlüssel (aus gen-vapid.mjs)
 #   API_TOKEN          langes Zufalls-Passwort, das du auch in der App einträgst
+#   BOSCH_KEY          Zufallsschlüssel, mit dem die Bosch-Tokens verschlüsselt werden (setup-secrets.mjs bosch)

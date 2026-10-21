@@ -2,6 +2,7 @@
 //   VAPID_PUBLIC, VAPID_PRIVATE_JWK  (Schlüsselpaar, mit dem sich dein Dienst gegenüber Apple ausweist)
 //   API_TOKEN                        (Passwort, das du gleich in der App einträgst)
 //   INGEST_TOKEN                     (Passwort im Kurzbefehl, das nur Fahrten abliefern darf)
+//   BOSCH_KEY                        (nur mit Argument „bosch“: verschlüsselt die Bosch-Zugangsdaten im Dienst)
 // Der private Schlüssel wird nie angezeigt oder gespeichert. Nur das Token wird einmal ausgegeben.
 // Aufruf (von überall):  node worker/scripts/setup-secrets.mjs
 import { spawnSync } from 'node:child_process';
@@ -29,6 +30,13 @@ if (process.argv[2] === 'ingest') {
   console.log('\n✅ Fertig. Abliefer-Token für den Kurzbefehl (nur jetzt sichtbar, bitte kopieren):\n');
   console.log(`   ${ingest}\n`);
   console.log('Er darf nur Fahrten abliefern, nichts lesen und keine Einstellungen ändern.\n');
+  process.exit(0);
+}
+
+// Aufruf mit „bosch“ erzeugt nur den Schlüssel, mit dem die Bosch-Zugangsdaten im Dienst verschlüsselt werden. Er wird nie angezeigt.
+if (process.argv[2] === 'bosch') {
+  putSecret('BOSCH_KEY', randomBytes(32).toString('hex'));
+  console.log('\n✅ Fertig. Der Bosch-Schlüssel liegt beim Dienst. Du musst dir nichts merken.\n');
   process.exit(0);
 }
 
