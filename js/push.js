@@ -124,7 +124,7 @@ export async function reportDay({ url, token, date, complete }) {
   await call(url, token, '/logged', { endpoint, date, complete });
 }
 
-// Fahrten, die ein Kurzbefehl aus Apple Health an den Dienst geschickt hat
+// Fahrten, die der Dienst von Bosch geholt hat und die auf die App warten
 export async function fetchInbox({ url, token }) {
   return call(url, token, '/inbox');
 }

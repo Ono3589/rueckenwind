@@ -1,14 +1,13 @@
-// Fahrten aus Apple Health: Ein iOS-Kurzbefehl legt Zeilen in die Zwischenablage, die App liest sie hier ein.
-// Eine Fahrt pro Zeile:   datum;start;km;minuten;kcal
+// Fahrten als Textzeilen lesen. Der Push-Dienst liefert so die Fahrten von Bosch an die App.
+// Eine Fahrt pro Zeile:   datum;start;km;minuten;kcal;ende
 // Beispiel:               2026-10-12;07:31;10,4;27;186
-// Auch Rohwerte von iOS gehen:  12.10.2026, 07:31;;10,4 km;27 min;186 kcal   (die Startzeit darf im Datum stecken)
 // Optional eine sechste Spalte mit der Endzeit: Dann teilt die App eine Fahrt über etwa die doppelte Strecke in Hin- und Rückweg.
 // Start, Minuten und Kalorien dürfen leer sein. Ohne Startzeit gilt die Zeile als Tagessumme
 // (fast doppelte Pendelstrecke wird auf Hin- und Rückweg verteilt).
 
 const MAX_KM = 300;
 
-// Der Kurzbefehl darf die Rohwerte aus Apple Health übergeben. Die App versteht sie so, wie iOS sie ausgibt:
+// Auch Rohwerte werden verstanden, so wie iOS sie ausgibt:
 // Datum mit Uhrzeit („12.10.2026, 07:31“, „12. Okt. 2026 um 07:31“), Strecke („10,4 km“, „10400 m“),
 // Dauer („27 min“, „00:27:03“, „1 Std. 5 Min.“), Energie („186 kcal“, „186 Cal“).
 

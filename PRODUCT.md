@@ -32,8 +32,8 @@ Erfolg heißt: Die App wird morgens geöffnet, weil sie in Sekunden eine verläs
 ## Operating Context
 
 - Genutzt wird die App vor allem früh morgens vor der Abfahrt, oft bei Dunkelheit, auf dem iPhone, mit einem kurzen Blick. Am Abend kommt der Rückweg dazu.
-- **Automatischer Abruf:** Ein iOS-Kurzbefehl (Automation) schickt Fahrten aus Apple Health an den eigenen Push-Dienst (`/rides`, eigener Abliefer-Token), die App holt sie beim Öffnen ab (`/inbox`). Passende Pendelfahrten werden automatisch übernommen, andere warten zur Prüfung. Apple Health direkt aus der Web-App zu lesen ist nicht möglich. Ungetestet auf dem iPhone: ob eBike Flow Fahrten in Apple Health schreibt und ob die Automation bei gesperrtem Gerät lesen kann.
-- **Fahrtdaten:** Bosch bietet keine öffentliche Kiox-API. Gewählt ist der kostenlose Weg Kiox → eBike Flow → Apple Health → iOS-Kurzbefehl → Zwischenablage → Rückenwind (ungetestet auf dem iPhone). Die Strava-Schnittstelle ist kostenpflichtig und deshalb nur optional. Fahrten lassen sich auch manuell eintragen. Der Nutzer verwendet komoot.
+- **Automatischer Abruf:** Der eigene Push-Dienst fragt alle 15 Minuten die Bosch-Data-Act-Schnittstelle (EU Data Act, kostenlos, OAuth mit PKCE) nach neuen Fahrten ab und legt sie in einen Eingang (`/inbox`), den die App beim Öffnen abholt. Passende Pendelfahrten werden automatisch übernommen, Hin- und Rückweg in einer Bosch-Fahrt werden geteilt, andere warten zur Prüfung. Die Bosch-Zugangsdaten liegen nur verschlüsselt im Dienst.
+- **Fahrtdaten:** Primär Bosch eBike Flow über die Data-Act-Schnittstelle. Apple Health und Kurzbefehle wurden bewusst entfernt. Die Strava-Schnittstelle ist kostenpflichtig und deshalb nur optional. Fahrten lassen sich auch manuell eintragen und nachträglich bearbeiten. Der Nutzer verwendet komoot.
 - **Pendelfahrt-Erkennung:** Start und Ende liegen in der Nähe von Zuhause und Arbeit. Fehlen Koordinaten, entscheiden Distanz und Tageszeit.
 - **Externe Dienste:**
   - Open-Meteo für das Wetter (kostenlos, ohne Schlüssel);

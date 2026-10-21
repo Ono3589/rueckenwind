@@ -5,13 +5,11 @@
 import { fetchForecast, assessDay } from '../../js/weather.js';
 import { buildNotification, buildEveningNotification } from '../../js/messages.js';
 import { sendPush } from './webpush.js';
-import { parseHealthText } from '../../js/health.js';
 import { startLogin, finishLogin, syncBosch, boschStatus, boschDisconnect, BoschError } from './bosch.js';
 
 const PREFIX = 'sub:';
-const INBOX = 'inbox:'; // Fahrten, die ein Kurzbefehl aus Apple Health geschickt hat und die die App noch abholt
+const INBOX = 'inbox:'; // Fahrten, die der Dienst von Bosch geholt hat und die die App noch abholt
 const INBOX_TTL = 30 * 24 * 3600; // nicht abgeholte Fahrten verfallen nach 30 Tagen
-const MAX_RIDES_TEXT = 16384;
 const WINDOW_MIN = 180; // so lange nach der Wunschzeit wird noch nachgeholt, falls ein Lauf ausfällt
 
 // ---------- Hilfen ----------
@@ -177,7 +175,6 @@ function corsHeaders(req, env) {
 const reply = (req, env, body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(req, env) } });
 
-const isoDate = (d) => d.toISOString().slice(0, 10);
 
 // Ortszeit für die Fahrten: die Zeitzone des (ersten) angemeldeten Geräts, sonst Berlin
 async function boschTz(env) {
@@ -215,10 +212,8 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
   if (req.method === 'GET' && url.pathname === '/health') return reply(req, env, { ok: true });
   if (req.method === 'GET' && url.pathname === '/vapid') return reply(req, env, { publicKey: env.VAPID_PUBLIC ?? '' });
 
-  // Zwei Schlüssel: API_TOKEN darf alles, INGEST_TOKEN (im Kurzbefehl) darf nur Fahrten abliefern
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   const isMain = !!env.API_TOKEN && !!token && (await sameToken(token, env.API_TOKEN));
-  const isIngest = !!env.INGEST_TOKEN && !!token && (await sameToken(token, env.INGEST_TOKEN));
 
   if (req.method === 'GET' && url.pathname === '/inbox') {
     if (!isMain) return reply(req, env, { error: 'Token falsch' }, 401);
@@ -246,24 +241,6 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
     return reply(req, env, await boschStatus(env));
   }
   if (req.method !== 'POST') return reply(req, env, { error: 'nicht gefunden' }, 404);
-
-  if (url.pathname === '/rides') {
-    // Vom Kurzbefehl: Text mit einer Fahrt pro Zeile, als JSON {"text": "…"} oder als reiner Text
-    if (!isMain && !isIngest) return reply(req, env, { error: 'Token falsch' }, 401);
-    const raw = await req.text();
-    if (raw.length > MAX_RIDES_TEXT) return reply(req, env, { error: 'zu groß' }, 413);
-    let text = raw;
-    try {
-      const j = JSON.parse(raw);
-      if (j && typeof j === 'object') text = typeof j.text === 'string' ? j.text : '';
-    } catch {
-      /* reiner Text */
-    }
-    const { items, ignored } = parseHealthText(text, { distanceKm: 0, today: isoDate(now) });
-    if (!items.length) return reply(req, env, { ok: true, accepted: 0, ignored: ignored.length });
-    await env.SUBS.put(INBOX + newInboxId(now), JSON.stringify({ text: text.trim(), received: now.toISOString() }), { expirationTtl: INBOX_TTL });
-    return reply(req, env, { ok: true, accepted: items.length, ignored: ignored.length });
-  }
 
   if (!isMain) return reply(req, env, { error: 'Token falsch' }, 401);
   const raw = await req.text();

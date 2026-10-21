@@ -75,6 +75,7 @@ const I = {
   wind: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.7" r="2.3" fill="currentColor"/></svg>',
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
@@ -409,34 +410,17 @@ function renderToday() {
 
 // ---------- Ansicht: Fahrten ----------
 
-// ---------- Fahrten aus Apple Health ----------
+// ---------- Von Bosch gelieferte Fahrten ----------
 
 let importPreview = null; // { items, ignored }
 
 const DIR_LABEL = { hin: 'Hinweg', rueck: 'Rückweg' };
-
-function shortcutHelp() {
-  return `<ol class="steps">
-    <li>Prüfe zuerst in der <strong>Health</strong>-App (Teilen → Apps), ob <strong>eBike Flow</strong> dort steht, und unter „Entdecken → Aktivität → Trainings“, ob deine Fahrten mit Strecke und Kalorien auftauchen. Schalte sonst in eBike Flow die Verbindung zu Apple Health ein.</li>
-    <li>In der <strong>Kurzbefehle</strong>-App einen neuen Kurzbefehl „Rückenwind“ anlegen:
-      <ol>
-        <li><em>Health-Samples suchen</em> (englisch „Find Health Samples“): Typ <strong>Trainings</strong>, Startdatum in den letzten 2 Tagen.</li>
-        <li><em>Für jedes Element wiederholen</em>: darin die Aktion <em>Text</em>. Füge nacheinander ein: Startdatum, <code>;;</code>, Strecke, <code>;</code>, Dauer, <code>;</code>, aktive Energie. Du musst nichts umformatieren.</li>
-        <li>Nach der Schleife <em>Text kombinieren</em> (Trennzeichen: neue Zeile) und <em>In die Zwischenablage kopieren</em>.</li>
-      </ol>
-    </li>
-    <li>Optional als <strong>Automation</strong>: Persönliche Automation, Tageszeit 18:00, den Kurzbefehl ohne Nachfrage ausführen.</li>
-    <li>Hier auf <strong>Einfügen</strong> tippen und die gefundenen Fahrten bestätigen.</li>
-  </ol>
-  <p class="note">Eine Zeile pro Fahrt. Die App liest die Werte so, wie iOS sie ausgibt, zum Beispiel:</p>
-  <code class="codebox">12.10.2026, 07:31;;10,4 km;27 min;186 kcal</code>
-  <p class="note">Strecke, Dauer und Kalorien dürfen fehlen. Gibt es keine Trainings, reicht die Tagessumme der Raddistanz, etwa <code>12.10.2026;;20,8 km</code>. Die App verteilt sie auf Hin- und Rückweg. Die Bezeichnungen der Aktionen können je nach iOS-Version leicht abweichen.</p>`;
-}
+let editingRide = null; // Kennung der Fahrt, die gerade bearbeitet wird
 
 // Genauere Werte ersetzen eine von Hand eingetragene Fahrt am selben Tag in derselben Richtung
-function addHealthRide(it) {
+function addImportedRide(it) {
   state.rides = state.rides.filter((r) => !(r.source === 'manuell' && r.date === it.date && r.direction === it.direction));
-  state.rides.push({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'health' }), ref: it.ref });
+  state.rides.push({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'bosch' }), ref: it.ref });
 }
 
 // Fahrten, die der Dienst geliefert hat und die nicht zur Strecke passen, warten hier auf deine Entscheidung
@@ -469,7 +453,7 @@ async function pullInbox({ manual = false } = {}) {
       for (const r of rides) {
         if (state.rides.some((x) => x.ref === r.ref) || (state.pendingRides ?? []).some((x) => x.ref === r.ref)) continue;
         if (r.fits) {
-          addHealthRide(r);
+          addImportedRide(r);
           added++;
         } else {
           state.pendingRides = [...(state.pendingRides ?? []), { date: r.date, start: r.start, km: r.km, minutes: r.minutes, kcal: r.kcal, direction: r.direction, note: r.note, ref: r.ref }].slice(-50);
@@ -545,6 +529,7 @@ function boschBody() {
       ${bad ? `<p class="note warn">${esc(bad)}</p>` : ''}
       ${boschDiag(info.lastInfo)}
       <p class="note">Neue Fahrten kommen automatisch. Bosch bekommt sie erst, wenn die eBike-Flow-App sie von der Kiox geholt hat, das passiert meist von selbst kurz nach der Fahrt.</p>
+      <label class="check"><input type="checkbox" data-path="notify.autoPull" ${state.notify.autoPull !== false ? 'checked' : ''}><span>Neue Fahrten beim Öffnen der App holen</span></label>
       <div class="actions">
         <button class="btn primary" data-action="bosch-sync" ${boschBusy ? 'disabled' : ''}>${I.refresh}Jetzt abfragen</button>
         ${info.needsLogin ? '<button class="btn" data-action="bosch-connect">Neu verbinden</button>' : ''}
@@ -560,7 +545,7 @@ cd ${dir} &amp;&amp; npx wrangler@4 deploy</code>
   }
   const redirect = `${base}/bosch/callback`;
   const login = `${location.origin}${location.pathname}#einstellungen`;
-  return `<p class="note">Fahrten kommen vollautomatisch aus deinem Bosch-Konto, ohne Kurzbefehl und ohne Einfügen. Möglich macht das die offizielle Schnittstelle nach dem EU Data Act. Sie kostet nichts.</p>
+  return `<p class="note">Fahrten kommen vollautomatisch aus deinem Bosch-Konto. Möglich macht das die offizielle Schnittstelle nach dem EU Data Act. Sie kostet nichts.</p>
     <ol class="steps">
       <li>Im <a href="https://portal.bosch-ebike.com/data-act/app" target="_blank" rel="noopener">Bosch Data-Act-Portal</a> als Datenempfänger eine App anlegen. Name: <code>Rückenwind</code>, „Confidential client“ aus. Login URL: <code class="codebox">${esc(login)}</code> Redirect URI: <code class="codebox">${esc(redirect)}</code></li>
       <li>Warten, bis Bosch die App freigibt (Minuten bis ein paar Tage). Dann im Flow-Portal oder in der eBike-Flow-App unter <strong>Data Act</strong> die Freigabe für „Rückenwind“ <strong>und für dein Bike</strong> einschalten.</li>
@@ -603,45 +588,14 @@ async function boschAction(fn) {
   }
 }
 
-function autoSetupHelp() {
-  const base = normalizeUrl(state.notify.url) ?? 'https://rueckenwind-push.NAME.workers.dev';
-  return `<p class="sec-note">So kommen die Fahrten ohne Tippen in die App: Ein Kurzbefehl liest sie aus Apple Health und schickt sie an deinen Dienst. Die App holt sie dort ab, sobald du sie öffnest. Passende Pendelfahrten werden gleich übernommen.</p>
-  <ol class="steps">
-    <li>Im Terminal einen eigenen <strong>Abliefer-Token</strong> erzeugen (er darf nur Fahrten abliefern):<code class="codebox">node ~/Documents/GitHub/rueckenwind/rueckenwind/worker/scripts/setup-secrets.mjs ingest</code></li>
-    <li>Den Kurzbefehl aus „Fahrten → Kurzbefehl einrichten“ bauen, aber statt „In die Zwischenablage kopieren“ die Aktion <em>Inhalt von URL abrufen</em> nehmen:
-      <ol>
-        <li>URL: <code>${esc(base)}/rides</code></li>
-        <li>Methode <strong>POST</strong></li>
-        <li>Header <code>Authorization</code> mit dem Wert <code>Bearer </code> und dahinter dein Abliefer-Token</li>
-        <li>Anfragetext <strong>JSON</strong>, ein Feld <code>text</code> vom Typ Text, Wert: der kombinierte Text</li>
-      </ol>
-    </li>
-    <li>Als <strong>Automation</strong>: Persönliche Automation → „App“ → eBike Flow → „wird geschlossen“, <em>Sofort ausführen</em>. Gesundheitsdaten sind bei gesperrtem iPhone nicht lesbar, ein Auslöser mitten in der Nacht liefert deshalb nichts.</li>
-  </ol>`;
-}
-
-function loadImportPreview(text) {
-  const { items, ignored } = parseHealthText(text, { distanceKm: state.route.distanceKm, today: todayISO() });
-  for (const it of items) {
-    it.dup = state.rides.some((r) => r.ref === it.ref);
-    it.checked = it.fits && !it.dup;
-  }
-  importPreview = items.length ? { items, ignored } : null;
-  if (!items.length) {
-    moreOpen.paste = true;
-    toast(ignored.length ? 'Die Zeilen konnten nicht gelesen werden. Format: Datum;Start;km;Minuten;kcal' : 'In der Zwischenablage stehen keine Fahrten');
-  }
-  renderRides();
-}
-
-function healthCard() {
+function reviewCard() {
   if (!importPreview) importPreview = pendingPreview();
   if (importPreview) {
     const { items, ignored } = importPreview;
     const n = items.filter((i) => i.checked).length;
     return `<section class="card import">
       <h2>${items.length} ${items.length === 1 ? 'Fahrt' : 'Fahrten'} ${importPreview.fromPending ? 'zur Prüfung' : 'gefunden'}</h2>
-      ${importPreview.fromPending ? '<p class="note">Diese Fahrten kamen automatisch aus Apple Health, passen aber nicht zu deiner Pendelstrecke. Wähle aus, welche zählen sollen.</p>' : ''}
+      ${importPreview.fromPending ? '<p class="note">Diese Fahrten kamen von Bosch, passen aber nicht zu deiner Pendelstrecke. Wähle aus, welche zählen sollen.</p>' : ''}
       <ul class="import-list">
         ${items
           .map(
@@ -654,17 +608,23 @@ function healthCard() {
           .join('')}
       </ul>
       ${ignored.length ? `<p class="note">${ignored.length} ${ignored.length === 1 ? 'Zeile wurde' : 'Zeilen wurden'} übersprungen (unlesbar oder unplausibel).</p>` : ''}
-      <div class="actions"><button class="btn primary" data-action="health-apply" ${n ? '' : 'disabled'}>${n} übernehmen</button><button class="btn ghost" data-action="health-discard">Verwerfen</button></div>
+      <div class="actions"><button class="btn primary" data-action="review-apply" ${n ? '' : 'disabled'}>${n} übernehmen</button><button class="btn ghost" data-action="review-discard">Verwerfen</button></div>
     </section>`;
   }
-  return `<section class="card health">
-    <div class="health-head">
-      <div><strong>Fahrten aus Apple Health</strong><p class="muted">Kurzbefehl ausführen, dann hier einfügen.</p></div>
-      <button class="btn primary" data-action="health-paste">Einfügen</button>
-    </div>
-    ${more('paste', 'Text selbst einfügen', 'falls die Zwischenablage nicht freigegeben wird', `<form class="paste-form" data-form="health-text"><textarea name="t" rows="4" placeholder="2026-10-12;07:31;10,4;27;186" aria-label="Fahrten als Text" required></textarea><button class="btn" type="submit">Lesen</button></form>`)}
-    ${more('health', 'Kurzbefehl einrichten', 'einmalig, etwa 5 Minuten', shortcutHelp())}
-  </section>`;
+  return '';
+}
+
+// Eine Fahrt nachträglich ändern: Datum, Richtung, Strecke, Dauer, Kalorien. Leere Kalorien werden wieder geschätzt.
+function editRideForm(r) {
+  const estimated = r.kcalSource === 'schätzung';
+  return `<li class="editing"><form class="edit-form" data-form="edit-ride" data-id="${r.id}">
+    <label>Datum<input type="date" name="date" value="${r.date}" max="${todayISO()}" required></label>
+    <label>Richtung<select name="direction"><option value="hin" ${r.direction === 'hin' ? 'selected' : ''}>Hinweg</option><option value="rueck" ${r.direction === 'rueck' ? 'selected' : ''}>Rückweg</option></select></label>
+    <label>Strecke in km<input type="number" name="km" inputmode="decimal" step="0.1" min="0.1" value="${r.km}" required></label>
+    <label><span>Minuten <small>optional</small></span><input type="number" name="minutes" inputmode="numeric" min="1" value="${r.minutes ?? ''}"></label>
+    <label class="wide"><span>Kalorien <small>leer lassen = schätzen</small></span><input type="number" name="kcal" inputmode="numeric" min="0" value="${estimated ? '' : r.kcal}" placeholder="${fmt.int(r.kcal)}"></label>
+    <div class="actions wide"><button class="btn primary" type="submit">Speichern</button><button class="btn ghost" type="button" data-action="edit-cancel">Abbrechen</button></div>
+  </form></li>`;
 }
 
 function renderRides() {
@@ -687,7 +647,7 @@ function renderRides() {
       : '<p class="muted">Noch keine Fahrten. Trag deine erste unten ein.</p>'
   }</header>
 
-  ${healthCard()}
+  ${reviewCard()}
   ${
     connected
       ? `<section class="card strava">
@@ -718,22 +678,23 @@ function renderRides() {
         ${g.rides
           .map(
             (r) => `
-          <li>
+          ${r.id === editingRide ? editRideForm(r) : `<li>
             <span class="dir ${r.direction}" aria-hidden="true">${I.arrow}</span>
             <div class="what">
               <strong>${fmt.dayShort(r.date)} · ${r.direction === 'hin' ? 'Hinweg' : 'Rückweg'}</strong>
-              <span>${{ strava: 'Strava', health: 'Apple Health' }[r.source] ?? 'Manuell'}${r.minutes ? ` · ${r.minutes} min` : ''} · ${fmt.int(r.kcal)} kcal${r.kcalSource === 'schätzung' ? '*' : ''}</span>
+              <span>${{ strava: 'Strava', bosch: 'Bosch', health: 'Importiert' }[r.source] ?? 'Manuell'}${r.minutes ? ` · ${r.minutes} min` : ''} · ${fmt.int(r.kcal)} kcal${r.kcalSource === 'schätzung' ? '*' : ''}</span>
             </div>
             <div class="nums"><strong><span class="num">${fmt.km(r.km)}</span><small>km</small></strong><span class="save">+${fmt.eur(rideSaving(r, perKm))}</span></div>
+            <button class="icon-btn edit" data-action="edit-ride" data-id="${r.id}" aria-label="Fahrt bearbeiten">${I.edit}</button>
             <button class="icon-btn" data-action="delete-ride" data-id="${r.id}" aria-label="Fahrt löschen">${I.trash}</button>
-          </li>`,
+          </li>`}`,
           )
           .join('')}
       </ul>
     </section>`,
     )
     .join('')}
-  ${rides.some((r) => r.kcalSource === 'schätzung') ? '<p class="footnote">* Geschätzt aus Gewicht und Fahrtdauer. Mit Daten aus Apple Health wird es genauer.</p>' : ''}`;
+  ${rides.some((r) => r.kcalSource === 'schätzung') ? '<p class="footnote">* Geschätzt aus Gewicht und Fahrtdauer. Mit Daten von Bosch wird es genauer.</p>' : ''}`;
   paint();
 }
 
@@ -837,7 +798,7 @@ function renderStats() {
         </dl>`
       : `<section class="statement empty">
           <p>${range.lead} bist du noch nicht gefahren.</p>
-          <p class="muted">Trag deine erste Fahrt ein oder hol sie aus Apple Health, dann füllt sich die Bilanz.</p>
+          <p class="muted">Trag deine erste Fahrt ein oder verbinde Bosch in den Einstellungen, dann füllt sich die Bilanz.</p>
           <a class="btn" href="#fahrten">Fahrt eintragen</a>
         </section>`
   }
@@ -958,7 +919,7 @@ function distanceBlock() {
 }
 
 const editingPlace = { home: false, work: false };
-const moreOpen = { auto: false, car: false, fine: false, strava: false, rules: false, health: false, paste: false, notify: false, msgs: false };
+const moreOpen = { auto: false, car: false, fine: false, strava: false, rules: false, notify: false, msgs: false };
 
 const more = (id, title, hint, body) => `
     <details class="more" data-more="${id}" ${moreOpen[id] ? 'open' : ''}>
@@ -1245,11 +1206,7 @@ function renderSettings() {
 
   <section class="group" id="bosch"><h2>Bosch eBike Flow</h2><div class="card settings" data-bosch>${boschBody()}</div></section>
 
-  <section class="group" id="strava"><h2>Fahrten per Apple Health</h2><div class="card settings">
-    <p class="note">Die Alternative zu Bosch direkt: Fahrten laufen über <strong>Apple Health</strong> in die App. Ein Kurzbefehl legt sie in die Zwischenablage, auf „Fahrten“ übernimmst du sie mit einem Tipp, oder er schickt sie an deinen Dienst (Automatik unten).</p>
-    <label class="check"><input type="checkbox" data-path="notify.autoPull" ${state.notify.autoPull !== false ? 'checked' : ''}><span>Fahrten automatisch vom Dienst holen</span></label>
-    <div class="actions"><button class="btn" data-action="inbox-pull">Jetzt holen</button><a class="btn ghost" href="#fahrten" data-scroll="health">Zu den Fahrten</a></div>
-    ${more('auto', 'Automatik einrichten', 'Kurzbefehl schickt Fahrten an deinen Dienst', autoSetupHelp())}
+  <section class="group" id="strava"><h2>Weitere Quellen</h2><div class="card settings">
     ${more(
       'strava',
       'Strava',
@@ -1291,7 +1248,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.15 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.16 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1345,7 +1302,7 @@ view.addEventListener('change', (e) => {
   if (el.dataset.import !== undefined && importPreview) {
     importPreview.items[+el.dataset.import].checked = el.checked;
     const n = importPreview.items.filter((i) => i.checked && !i.dup).length;
-    const btn = view.querySelector('[data-action="health-apply"]');
+    const btn = view.querySelector('[data-action="review-apply"]');
     if (btn) {
       btn.textContent = `${n} übernehmen`;
       btn.disabled = n === 0;
@@ -1375,6 +1332,26 @@ view.addEventListener('toggle', (e) => {
 view.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
+  if (form.dataset.form === 'edit-ride') {
+    const r = state.rides.find((x) => x.id === form.dataset.id);
+    if (!r) return;
+    const fd = new FormData(form);
+    const km = parseFloat(String(fd.get('km')).replace(',', '.'));
+    if (!Number.isFinite(km) || km <= 0) return toast('Bitte eine Strecke größer als 0 eintragen');
+    const date = String(fd.get('date'));
+    const direction = fd.get('direction') === 'rueck' ? 'rueck' : 'hin';
+    if (state.rides.some((x) => x.id !== r.id && x.date === date && x.direction === direction)) return toast('Für diesen Tag und diese Richtung gibt es schon eine Fahrt');
+    const minutes = parseInt(fd.get('minutes'), 10) || null;
+    const kcalRaw = String(fd.get('kcal')).trim();
+    const kcal = kcalRaw === '' ? null : Number(kcalRaw);
+    // ref bleibt stehen: so wird die Fahrt beim erneuten Laden von Bosch nicht noch einmal angelegt
+    Object.assign(r, { date, direction, km: Math.round(km * 100) / 100, minutes }, kcal === null || !Number.isFinite(kcal) ? { kcal: estimateKcal(km, minutes, state.person, state.route.avgSpeed), kcalSource: 'schätzung' } : { kcal: Math.round(kcal), kcalSource: 'manuell' });
+    editingRide = null;
+    persist();
+    toast('Fahrt gespeichert');
+    renderRides();
+    return;
+  }
   if (form.dataset.form === 'add-ride') {
     const fd = new FormData(form);
     const km = parseFloat(String(fd.get('km')).replace(',', '.'));
@@ -1390,10 +1367,6 @@ view.addEventListener('submit', async (e) => {
     persist();
     toast(added ? `${added === 2 ? 'Hin- und Rückweg' : '1 Fahrt'} eingetragen` : 'Für diesen Tag schon eingetragen');
     renderRides();
-  }
-  if (form.dataset.form === 'health-text') {
-    loadImportPreview(new FormData(form).get('t'));
-    return;
   }
   if (form.dataset.form === 'save-preset') {
     const label = new FormData(form).get('name').trim();
@@ -1436,7 +1409,6 @@ function setPlace(which, place) {
 const shortLabel = (label) => label.split(',').slice(0, 3).join(',').trim();
 
 const actions = {
-  'inbox-pull': () => pullInbox({ manual: true }),
   'bosch-refresh': () => loadBosch({ force: true }),
   'bosch-connect': () => {
     const id = String(state.bosch?.clientId ?? '').trim();
@@ -1493,19 +1465,7 @@ const actions = {
     dayOffset = +el.dataset.d;
     renderToday();
   },
-  'health-paste': async () => {
-    let text = '';
-    try {
-      text = await navigator.clipboard.readText();
-    } catch {
-      moreOpen.paste = true;
-      renderRides();
-      toast('Die Zwischenablage ist nicht freigegeben. Füge den Text unten ein.');
-      return;
-    }
-    loadImportPreview(text);
-  },
-  'health-discard': () => {
+  'review-discard': () => {
     if (importPreview?.fromPending) {
       state.pendingRides = [];
       persist();
@@ -1513,9 +1473,9 @@ const actions = {
     importPreview = null;
     renderRides();
   },
-  'health-apply': () => {
+  'review-apply': () => {
     const chosen = (importPreview?.items ?? []).filter((i) => i.checked && !i.dup);
-    for (const it of chosen) addHealthRide(it);
+    for (const it of chosen) addImportedRide(it);
     if (importPreview?.fromPending) state.pendingRides = (state.pendingRides ?? []).filter((p) => !chosen.some((c) => c.ref === p.ref));
     importPreview = null;
     persist();
@@ -1582,6 +1542,15 @@ const actions = {
   refresh: () => {
     weatherError = null;
     ensureForecast(true);
+  },
+  'edit-ride': (el) => {
+    editingRide = el.dataset.id;
+    renderRides();
+    view.querySelector('.edit-form input[name="km"]')?.focus({ preventScroll: true });
+  },
+  'edit-cancel': () => {
+    editingRide = null;
+    renderRides();
   },
   'delete-ride': (el) => {
     if (!confirm('Diese Fahrt löschen?')) return;

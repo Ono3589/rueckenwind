@@ -41,7 +41,7 @@ Unter Einstellungen → Sicherheit lässt sich eine PIN (6, 8 oder 10 Ziffern) e
 
 ## Fahrten direkt von Bosch (vollautomatisch)
 
-Bosch muss Besitzern in der EU ihre Daten nach dem **EU Data Act** herausgeben und bietet dafür eine kostenlose Schnittstelle. Dein Push-Dienst fragt sie alle 15 Minuten ab und legt neue Fahrten in den Eingang, aus dem die App sie abholt. Kein Kurzbefehl, kein Einfügen.
+Bosch muss Besitzern in der EU ihre Daten nach dem **EU Data Act** herausgeben und bietet dafür eine kostenlose Schnittstelle. Dein Push-Dienst fragt sie alle 15 Minuten ab und legt neue Fahrten in den Eingang (`/inbox`), aus dem die App sie abholt. Kein Kurzbefehl, kein Einfügen. Fahrten lassen sich in der App nachträglich bearbeiten (Stift in der Fahrtenliste).
 
 ```
 Kiox → eBike-Flow-App → Bosch-Cloud ← Push-Dienst (alle 15 Min.) → Eingang → Rückenwind
@@ -64,34 +64,7 @@ Die Anmeldung läuft als OAuth 2.0 mit PKCE als öffentlicher Client. Es gibt ke
 
 **Grenzen:** Nur Bosch-Konten aus der EU und nur Smart-System-Bikes (die mit der Flow-App). Bosch veröffentlicht eine Fahrt erst, wenn die eBike-Flow-App sie von der Kiox geholt hat. Die Felder der Schnittstelle (`distance`, `durationWithoutStops`, `caloriesBurned`, `startTime`) stammen aus einer laufenden Open-Source-Integration, Boschs eigene Dokumentation liegt hinter dem Portal-Login. Zeigt „Jetzt abfragen“ Fahrten an, die nicht ankommen, hilft eine Rückmeldung mit der Fehlermeldung aus der Karte.
 
-## Fahrten aus Apple Health (Kiox → eBike Flow → Apple Health → Rückenwind)
-
-Bosch bietet keine öffentliche Kiox-API. Der kostenlose Weg geht über Apple Health:
-
-1. In der **eBike-Flow**-App die Verbindung zu Apple Health einschalten. In der Health-App unter „Teilen → Apps“ prüfen, dass eBike Flow dort steht, und unter „Entdecken → Aktivität → Trainings“, dass die Fahrten mit Strecke und Kalorien erscheinen.
-2. In der **Kurzbefehle**-App einen Kurzbefehl bauen: *Health-Samples suchen* (Typ Trainings, letzte 2 Tage) → *Für jedes Element wiederholen* → darin ein *Text* aus Startdatum, `;;`, Strecke, `;`, Dauer, `;`, aktive Energie → danach *Text kombinieren* (neue Zeile) → *In die Zwischenablage kopieren*. Die Werte müssen nicht umformatiert werden. Die App versteht sie so, wie iOS sie ausgibt, zum Beispiel `12.10.2026, 07:31;;10,4 km;27 min;186 kcal`. Auch `2026-10-12;07:31;10,4;27;186` geht. Strecke, Dauer und Kalorien dürfen fehlen. Eine Zeile `12.10.2026;;20,8 km` mit der Tagessumme wird auf Hin- und Rückweg verteilt.
-3. In Rückenwind unter **Fahrten → Einfügen** die gefundenen Fahrten ansehen und übernehmen. Fahrten, die nicht zu deiner Strecke passen, sind abgewählt, bereits übernommene werden übersprungen.
-
-### Automatisch, ohne Tippen (über den Push-Dienst)
-
-Eine Web-App kann Apple Health nicht selbst lesen (das geht nur mit einer nativen iOS-App und bezahltem Entwicklerkonto). Der Kurzbefehl kann die Fahrten aber an deinen eigenen Dienst schicken, und die App holt sie dort ab:
-
-```
-Kiox → eBike Flow → Apple Health → Kurzbefehl (Automation) → Push-Dienst (/rides) → App holt ab (/inbox)
-```
-
-1. Einmalig einen **Abliefer-Token** erzeugen, der nur Fahrten abliefern darf (er ist getrennt vom Haupt-Token): `node worker/scripts/setup-secrets.mjs ingest`. Danach den Dienst aktualisieren: im Ordner `worker/` `npx wrangler@4 deploy`.
-2. Im Kurzbefehl statt „In die Zwischenablage kopieren“ **Inhalt von URL abrufen**: URL `https://DEIN-DIENST.workers.dev/rides`, Methode POST, Header `Authorization: Bearer ABLIEFER-TOKEN`, Anfragetext JSON mit einem Feld `text` (der kombinierte Text).
-3. Als Automation: Persönliche Automation → App „eBike Flow“ → wird geschlossen → sofort ausführen. Gesundheitsdaten sind bei gesperrtem iPhone nicht lesbar, ein Auslöser mitten in der Nacht liefert deshalb nichts.
-4. Die App holt neue Fahrten beim Öffnen und beim Zurückkehren (höchstens einmal pro Minute) oder per „Jetzt holen“ in den Einstellungen. Fahrten, die zu deiner Strecke passen, werden gleich übernommen. Alles andere (zum Beispiel eine lange Tour) landet unter **Fahrten → „zur Prüfung“**, dort wählst du aus. Erst nach dem sicheren Speichern in der App werden die Fahrten beim Dienst gelöscht. Nicht abgeholte Fahrten verfallen nach 30 Tagen.
-
-Was der Dienst dabei speichert: nur Datum, Startzeit, Strecke, Dauer und Kalorien der gelieferten Fahrten, keine Orte. Mit eingeschalteter App-Sperre sind die Fahrten in der App danach verschlüsselt, beim Dienst liegen sie bis zum Abholen im Klartext.
-
-Warum die Zwischenablage? Ein Link aus einem Kurzbefehl öffnet auf dem iPhone immer Safari, nie die installierte App. Safari und die App haben getrennten Speicher, die Daten kämen also nie an. Die Zwischenablage ist der einzige Weg, der in die installierte App führt. iOS fragt beim Einfügen einmal nach.
-
-Der Kurzbefehl wurde ohne iPhone entworfen und ist **ungetestet**. Die Bezeichnungen der Aktionen können je nach iOS-Version abweichen. Das Einlesen der Zeilen in der App ist getestet (`tests/health.test.mjs`).
-
-### Strava (optional, kostenpflichtig)
+## Strava (optional, kostenpflichtig)
 
 Die Strava-Schnittstelle ist nur mit einem Strava-Abonnement nutzbar. Wer eines hat, kann in den Einstellungen unter Kiox-Fahrten → Strava eine eigene API-App eintragen (Authorization Callback Domain: `<dein-name>.github.io`). Ohne Abo bleibt dieser Teil ungenutzt.
 
@@ -142,7 +115,7 @@ Wichtig: Alle Befehle im Ordner `worker/` ausführen (die Eingabezeile endet auf
 | `js/weather.js` | Open-Meteo-Abfrage, Bewertung von Hin- und Rückweg, Wind relativ zur Fahrtrichtung, Ausrüstungstipps |
 | `js/costs.js` | Kosten pro km für Auto (aus Verbrauch, Preis, Jahreskosten) und E-Bike, CO₂, Bilanz, Entfernungspauschale |
 | `js/strava.js` | OAuth, Aktivitäten laden, Pendelfahrten erkennen (optional, Strava-Abo nötig) |
-| `js/health.js` | Fahrten aus der Zwischenablage (Apple-Health-Kurzbefehl) einlesen und prüfen |
+| `js/health.js` | Fahrten als Textzeilen lesen und prüfen (so liefert der Dienst die Bosch-Fahrten), teilt Hin- und Rückweg in einer Fahrt |
 | `js/geo.js` | Distanz, Kurs, Adresssuche (OpenStreetMap Nominatim), Radroute (FOSSGIS-Routing), Standort |
 | `js/map.js` | Kartenvorschau aus OpenStreetMap-Kacheln mit Routenlinie (ein SVG), Linie ausdünnen |
 | `js/store.js` | Einstellungen und Fahrten im localStorage |
