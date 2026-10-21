@@ -174,20 +174,27 @@ export function activityLine(a, tz, localParts) {
   const mm = String(minutes % 60).padStart(2, '0');
   const sec = num(a, 'durationWithoutStops');
   const kcal = num(a, 'caloriesBurned');
-  return `${date};${hh}:${mm};${(meters / 1000).toFixed(2)};${sec === null ? '' : Math.round(sec / 60)};${kcal === null ? '' : Math.round(kcal)}`;
+  // Bosch fasst Hin- und Rückweg oft zu einer Fahrt zusammen. Die Endzeit hilft der App beim Teilen (sechste Spalte, darf leer sein).
+  const stop = parseStart(a?.endTime);
+  let endCol = '';
+  if (stop && stop > start) {
+    const e = localParts(stop, tz);
+    if (e.date === date) endCol = `${String(Math.floor(e.minutes / 60)).padStart(2, '0')}:${String(e.minutes % 60).padStart(2, '0')}`;
+  }
+  return `${date};${hh}:${mm};${(meters / 1000).toFixed(2)};${sec === null ? '' : Math.round(sec / 60)};${kcal === null ? '' : Math.round(kcal)};${endCol}`;
 }
 
 const activityId = (a) => String(a?.id ?? a?.startTime ?? '');
 
 // putInbox(text) legt die Zeilen in den Eingang der App. Rückgabe: was passiert ist.
-export async function syncBosch(env, now, { tz, localParts, putInbox, fetchImpl = fetch }) {
+export async function syncBosch(env, now, { tz, localParts, putInbox, fetchImpl = fetch, reset = false }) {
   const conn = await env.SUBS.get(CONN, 'json');
   if (!conn) return { connected: false };
   let current = conn;
   try {
     const { activities, conn: updated, shape, access } = await getActivities(env, conn, now, fetchImpl);
     current = updated;
-    const seen = new Set(current.seen ?? []);
+    const seen = new Set(reset ? [] : current.seen ?? []); // reset: alle Fahrten der letzten Tage noch einmal liefern (die App erkennt Doppelte)
     const since = now.getTime() - LOOKBACK_DAYS * 86400000;
     const fresh = activities.filter((a) => {
       const id = activityId(a);

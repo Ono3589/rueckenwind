@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Hülle aus dem Cache, Wetter & Strava immer frisch aus dem Netz.
-const VERSION = 'rueckenwind-v0.15.2';
+const VERSION = 'rueckenwind-v0.15.3';
 const SHELL = [
   './',
   './index.html',

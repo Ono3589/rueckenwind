@@ -2,6 +2,7 @@
 // Eine Fahrt pro Zeile:   datum;start;km;minuten;kcal
 // Beispiel:               2026-10-12;07:31;10,4;27;186
 // Auch Rohwerte von iOS gehen:  12.10.2026, 07:31;;10,4 km;27 min;186 kcal   (die Startzeit darf im Datum stecken)
+// Optional eine sechste Spalte mit der Endzeit: Dann teilt die App eine Fahrt über etwa die doppelte Strecke in Hin- und Rückweg.
 // Start, Minuten und Kalorien dürfen leer sein. Ohne Startzeit gilt die Zeile als Tagessumme
 // (fast doppelte Pendelstrecke wird auf Hin- und Rückweg verteilt).
 
@@ -98,6 +99,12 @@ function parseTime(s) {
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
+const shiftTime = (t, delta) => {
+  const [h, m] = t.split(':').map(Number);
+  const total = (((h * 60 + m + delta) % 1440) + 1440) % 1440;
+  return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+};
+
 // text: Inhalt der Zwischenablage. distanceKm: deine Strecke pro Weg. today: 'YYYY-MM-DD' (nur für den Zukunftscheck).
 export function parseHealthText(text, { distanceKm = 0, today = new Date().toISOString().slice(0, 10) } = {}) {
   const items = [];
@@ -122,16 +129,27 @@ export function parseHealthText(text, { distanceKm = 0, today = new Date().toISO
     const km = parseKm(f[2]);
     const minutes = parseMinutes(f[3]);
     const kcal = parseKcal(f[4]);
+    // Sechste Spalte = Endzeit (darf leer sein). Sie kennzeichnen Quellen wie Bosch, die Hin- und Rückweg zu EINER Fahrt zusammenfassen.
+    const mergeable = f.length >= 6;
+    const end = mergeable ? parseTime(f[5]) : null;
     if (!date) { ignored.push({ line, reason: 'Datum nicht lesbar' }); continue; }
     if (date > latest) { ignored.push({ line, reason: 'liegt in der Zukunft' }); continue; }
     if (km === null || Number.isNaN(km) || km < 0.3 || km > MAX_KM) { ignored.push({ line, reason: 'Strecke fehlt oder unplausibel' }); continue; }
     if (Number.isNaN(minutes) || (minutes !== null && (minutes < 1 || minutes > 720))) { ignored.push({ line, reason: 'Dauer unplausibel' }); continue; }
     if (Number.isNaN(kcal) || (kcal !== null && (kcal < 0 || kcal > 6000))) { ignored.push({ line, reason: 'Kalorien unplausibel' }); continue; }
 
-    const split = start === null && distanceKm > 0 && km >= distanceKm * 1.65 && km <= distanceKm * 2.35;
-    const parts = split ? [['hin', 'Tagessumme, geteilt'], ['rueck', 'Tagessumme, geteilt']] : [[null, '']];
-    for (const [forced, note] of parts) {
-      const share = split ? 2 : 1;
+    const doubleLength = distanceKm > 0 && km >= distanceKm * 1.65 && km <= distanceKm * 2.35;
+    const split = start === null && doubleLength;
+    // Hin und Rück in einer Fahrt: der Rückweg beginnt so viele Minuten vor dem Ende, wie er dauert (die halbe Fahrzeit)
+    const merged = mergeable && start !== null && doubleLength;
+    const backStart = merged && end ? shiftTime(end, -Math.round((minutes ?? 30) / 2)) : null;
+    const parts = merged
+      ? [['hin', 'Hin- und Rückweg in einer Fahrt, geteilt', start], ['rueck', 'Hin- und Rückweg in einer Fahrt, geteilt', backStart]]
+      : split
+        ? [['hin', 'Tagessumme, geteilt', null], ['rueck', 'Tagessumme, geteilt', null]]
+        : [[null, '', start]];
+    for (const [forced, note, partStart] of parts) {
+      const share = split || merged ? 2 : 1;
       let direction = forced;
       if (!direction) {
         if (start) direction = Number(start.slice(0, 2)) < 12 ? 'hin' : 'rueck';
@@ -144,14 +162,14 @@ export function parseHealthText(text, { distanceKm = 0, today = new Date().toISO
       const k = round1(km / share);
       items.push({
         date,
-        start,
+        start: partStart,
         km: k,
         minutes: minutes === null ? null : Math.max(1, Math.round(minutes / share)),
         kcal: kcal === null ? null : Math.round(kcal / share),
         direction,
         note,
         fits: distanceKm <= 0 || (k >= distanceKm * 0.65 && k <= distanceKm * 1.35),
-        ref: `${date}|${start ?? '-'}|${k}|${direction}`,
+        ref: `${date}|${partStart ?? '-'}|${k}|${direction}`,
       });
     }
   }

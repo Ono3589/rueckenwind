@@ -189,8 +189,9 @@ async function boschTz(env) {
   return 'Europe/Berlin';
 }
 
-export async function runBoschSync(env, now = new Date()) {
+export async function runBoschSync(env, now = new Date(), { reset = false } = {}) {
   return syncBosch(env, now, {
+    reset,
     tz: await boschTz(env),
     localParts,
     fetchImpl: env.fetchImpl ?? fetch,
@@ -288,7 +289,7 @@ export async function handleRequest(req, env, now = new Date(), forecastFor = fe
       return reply(req, env, { error: e instanceof BoschError ? e.message : String(e?.message ?? e) }, 400);
     }
   }
-  if (url.pathname === '/bosch/sync') return reply(req, env, await runBoschSync(env, now));
+  if (url.pathname === '/bosch/sync') return reply(req, env, await runBoschSync(env, now, { reset: body?.reset === true }));
   if (url.pathname === '/bosch/disconnect') return reply(req, env, await boschDisconnect(env));
 
   const endpoint = body?.subscription?.endpoint ?? body?.endpoint;

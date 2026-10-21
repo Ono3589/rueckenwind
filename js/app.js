@@ -548,6 +548,7 @@ function boschBody() {
       <div class="actions">
         <button class="btn primary" data-action="bosch-sync" ${boschBusy ? 'disabled' : ''}>${I.refresh}Jetzt abfragen</button>
         ${info.needsLogin ? '<button class="btn" data-action="bosch-connect">Neu verbinden</button>' : ''}
+        <button class="btn ghost" data-action="bosch-reload">Fahrten neu laden</button>
         <button class="btn ghost" data-action="bosch-disconnect">Trennen</button>
       </div>`;
   }
@@ -1454,6 +1455,14 @@ const actions = {
       await pullInbox({ manual: true });
       if (!r.imported) toast(r.fetched ? `Bosch lieferte ${r.fetched} ${r.fetched === 1 ? 'Fahrt' : 'Fahrten'}, nichts Neues` : 'Bosch hat keine Fahrten geliefert');
     }),
+  'bosch-reload': () => {
+    if (!confirm('Die Fahrten der letzten 14 Tage noch einmal von Bosch holen? Was schon in der App steht, wird nicht doppelt eingetragen.')) return;
+    return boschAction(async (url, token) => {
+      const r = await boschSync({ url, token, reset: true });
+      if (r.error) return toast(r.error);
+      await pullInbox({ manual: true });
+    });
+  },
   'bosch-disconnect': () => {
     if (!confirm('Verbindung zu Bosch trennen? Schon übernommene Fahrten bleiben.')) return;
     return boschAction(async (url, token) => {

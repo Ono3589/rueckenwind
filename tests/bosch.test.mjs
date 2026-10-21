@@ -53,14 +53,14 @@ test('Client-ID wird geprüft', () => {
 
 test('Eine Bosch-Fahrt wird zur Zeile, die die App versteht (Ortszeit, km, Minuten, kcal)', () => {
   const line = activityLine(ride('1', '2026-10-15T05:31:00Z'), 'Europe/Berlin', localParts);
-  assert.equal(line, '2026-10-15;07:31;10.40;27;186');
+  assert.equal(line, '2026-10-15;07:31;10.40;27;186;');
   const { items } = parseHealthText(line, { distanceKm: 10.4, today: '2026-10-15' });
   assert.equal(items.length, 1);
   assert.equal(items[0].direction, 'hin');
   assert.equal(items[0].fits, true);
   assert.equal(items[0].km, 10.4);
   // fehlende Felder sind in Ordnung, zu kurze oder kaputte Fahrten fallen weg
-  assert.match(activityLine({ id: 'x', startTime: '2026-10-15T15:00:00Z', distance: 8000 }, 'Europe/Berlin', localParts), /^2026-10-15;17:00;8\.00;;$/);
+  assert.match(activityLine({ id: 'x', startTime: '2026-10-15T15:00:00Z', distance: 8000 }, 'Europe/Berlin', localParts), /^2026-10-15;17:00;8\.00;;;$/);
   assert.equal(activityLine(ride('2', '2026-10-15T05:31:00Z', 50), 'Europe/Berlin', localParts), null);
   assert.equal(activityLine({ id: '3', distance: 9000 }, 'Europe/Berlin', localParts), null);
   assert.equal(activityLine(null, 'Europe/Berlin', localParts), null);
@@ -248,4 +248,40 @@ test('Leere Liste: der Dienst zählt die freigegebenen Bikes, um die Ursache zu 
   const env = makeEnv(bosch.impl);
   await connect(env);
   assert.equal(bosch.calls.api.some((c) => c.url.includes('/bikes')), false);
+});
+
+test('Hin und Rück in einer Bosch-Fahrt: Endzeit wandert mit, das Teilen macht die App', async () => {
+  const merged = { id: 'm1', startTime: '2026-10-15T05:30:00Z', endTime: '2026-10-15T15:20:00Z', distance: 20800, durationWithoutStops: 3240, caloriesBurned: 372 };
+  const line = activityLine(merged, 'Europe/Berlin', localParts);
+  assert.equal(line, '2026-10-15;07:30;20.80;54;372;17:20');
+  const { items } = parseHealthText(line, { distanceKm: 10.4, today: '2026-10-15' });
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((i) => [i.direction, i.start, i.km, i.minutes, i.kcal, i.fits]), [['hin', '07:30', 10.4, 27, 186, true], ['rueck', '16:53', 10.4, 27, 186, true]]);
+  assert.notEqual(items[0].ref, items[1].ref);
+  // Endzeit am Folgetag oder fehlend: trotzdem teilen, Rückweg ohne Startzeit
+  const open = parseHealthText('2026-10-15;07:30;20.80;54;372;', { distanceKm: 10.4, today: '2026-10-15' });
+  assert.deepEqual(open.items.map((i) => [i.direction, i.start]), [['hin', '07:30'], ['rueck', null]]);
+});
+
+test('Nur Bosch-Zeilen werden geteilt: eine lange Einzelfahrt aus anderer Quelle bleibt ganz', () => {
+  const tour = parseHealthText('2026-10-17;10:00;20.8;62;300', { distanceKm: 10.4, today: '2026-10-17' });
+  assert.equal(tour.items.length, 1);
+  assert.equal(tour.items[0].fits, false);
+  // eine einfache Bosch-Fahrt und eine ganz andere Länge bleiben unverändert
+  assert.equal(parseHealthText('2026-10-15;07:30;10.4;27;186;07:57', { distanceKm: 10.4, today: '2026-10-15' }).items.length, 1);
+  assert.equal(parseHealthText('2026-10-18;09:00;38.0;120;600;11:00', { distanceKm: 10.4, today: '2026-10-18' }).items.length, 1);
+});
+
+test('Neu laden: schon gesehene Fahrten werden noch einmal geliefert', async () => {
+  const bosch = fakeBosch({ activities: [ride('a1', '2026-10-15T05:31:00Z')] });
+  const env = makeEnv(bosch.impl);
+  await connect(env);
+  const inbox = () => [...env.SUBS.m.keys()].filter((k) => k.startsWith('inbox:')).length;
+  assert.equal(inbox(), 1);
+  assert.equal((await runBoschSync(env, NOW)).imported, 0);
+  assert.equal((await runBoschSync(env, NOW, { reset: true })).imported, 1);
+  assert.equal(inbox(), 2);
+  // über die Route nur mit Token und mit reset im Anfragetext
+  const viaApi = await (await post(env, '/bosch/sync', { reset: true })).json();
+  assert.equal(viaApi.imported, 1);
 });

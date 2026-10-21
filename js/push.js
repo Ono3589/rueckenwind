@@ -142,8 +142,8 @@ export async function boschStart({ url, token, clientId }) {
   return call(url, token, '/bosch/start', { clientId });
 }
 
-export async function boschSync({ url, token }) {
-  return call(url, token, '/bosch/sync', {});
+export async function boschSync({ url, token, reset = false }) {
+  return call(url, token, '/bosch/sync', reset ? { reset: true } : {});
 }
 
 export async function boschDisconnect({ url, token }) {
