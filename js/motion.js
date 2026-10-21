@@ -141,8 +141,9 @@ export function slide(update, direction) {
 // ---------- Startbildschirm ----------
 
 // Läuft einmal pro Kaltstart: kurz warten, bis die Schrift da ist, mindestens minMs zeigen, Tippen überspringt.
-// onLeave läuft, sobald er auszublenden beginnt: die App baut sich dann schon darunter auf.
-export function runSplash({ minMs = 2200, skipAfterMs = 700, onLeave } = {}) {
+// Zum Schluss fährt der Radfahrer rechts aus dem Bild, dann blendet der Bildschirm aus.
+// onLeave läuft beim Ausblenden: die App baut sich dann schon darunter auf.
+export function runSplash({ minMs = 2000, skipAfterMs = 700, onLeave } = {}) {
   const el = document.getElementById('splash');
   if (!el) {
     document.documentElement.classList.remove('has-splash');
@@ -151,19 +152,23 @@ export function runSplash({ minMs = 2200, skipAfterMs = 700, onLeave } = {}) {
   }
   const reduced = reducedMotion();
   const min = reduced ? 700 : minMs;
+  const rideOut = reduced ? 0 : 750;
   return new Promise((resolve) => {
     const t0 = performance.now();
     let finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
-      el.classList.add('out');
-      document.documentElement.classList.remove('has-splash');
-      onLeave?.();
+      el.classList.add('leaving');
       setTimeout(() => {
-        el.remove();
-        resolve();
-      }, reduced ? 120 : 800);
+        el.classList.add('out');
+        document.documentElement.classList.remove('has-splash');
+        onLeave?.();
+        setTimeout(() => {
+          el.remove();
+          resolve();
+        }, reduced ? 120 : 500);
+      }, rideOut);
     };
     const fonts = Promise.race([document.fonts?.ready ?? Promise.resolve(), new Promise((r) => setTimeout(r, 1500))]);
     const wait = new Promise((r) => setTimeout(r, min));

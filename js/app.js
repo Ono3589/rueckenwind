@@ -1894,6 +1894,10 @@ function boot() {
   if (state.route.home && state.route.work && ((!state.route.distanceManual && !state.route.distanceSource) || !state.route.path?.length)) updateRouteDistance();
 }
 
+// Kein Zoomen per Aufziehen: iOS beachtet user-scalable=no nicht überall, Safaris Gesten-Ereignisse schon
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
+
 document.documentElement.classList.toggle('motion', !reducedMotion());
 runSplash({ onLeave: () => (locked ? unlockFlow().then(boot) : boot()) });
 
