@@ -480,7 +480,7 @@ async function pullInbox({ manual = false } = {}) {
     persist();
     if (session) await session.flush(); // erst sicher gespeichert, dann beim Dienst löschen
     await ackInbox({ url: base, token: n.token, ids: items.map((i) => i.id) });
-    if (added || queued || manual) toast(added || queued ? `${added ? `${added} ${added === 1 ? 'Fahrt' : 'Fahrten'} aus Apple Health übernommen` : ''}${added && queued ? ', ' : ''}${queued ? `${queued} zur Prüfung` : ''}` : 'Nichts Neues, alles schon da');
+    if (added || queued || manual) toast(added || queued ? `${added ? `${added} ${added === 1 ? 'Fahrt' : 'Fahrten'} übernommen` : ''}${added && queued ? ', ' : ''}${queued ? `${queued} zur Prüfung` : ''}` : 'Nichts Neues, alles schon da');
     if (!locked && ['heute', 'fahrten', 'bilanz'].includes(currentTab())) render();
   } catch (e) {
     console.warn('Fahrten holen fehlgeschlagen:', e.message);
