@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" class="has-splash">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -15,11 +15,84 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@500..800&family=Funnel+Sans:wght@400..700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Funnel+Sans:wght@400..700&display=swap">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
+  <!-- splash:start -->
+  <div id="splash" class="splash" aria-hidden="true">
+    <svg class="scene go scene-splash" viewBox="0 0 400 240" preserveAspectRatio="xMidYMax slice" role="img" aria-label="Rückenwind" focusable="false">
+  <defs>
+    <linearGradient id="sky-splash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky1"/><stop offset=".75" class="sky2"/></linearGradient>
+    <radialGradient id="sun-splash" cx="50%" cy="36%" r="70%"><stop offset="0" class="sun1"/><stop offset="1" class="sun2"/></radialGradient>
+    <radialGradient id="glow-splash" cx="50%" cy="50%" r="50%"><stop offset="0" class="glow" stop-opacity=".6"/><stop offset="1" class="glow" stop-opacity="0"/></radialGradient>
+    <clipPath id="clip-splash"><rect width="400" height="172"/></clipPath>
+    <path id="far-splash" d="M0 172V140H0V146.3H21H21V133.9H39H39V148H57H57V146.4H90H90V140.6H115H115V150.4H140H140V153H173H173V128.1H197H197V126.9H229H229V129.9H250H250V133.7H287H287V146.9H312H312V152.7H338H338V153H357H357V142.8H388H388V140H400V172Z"/>
+    <path id="near-splash" d="M0 172V124H0V106H21H21V132.6H53H53V104.5H82H82V139.4H99H99V130.1H116H116V109.2H151H151V144.4H188H188V126.2H212L200 111.9L188 126.2H212V107.1H238H238V139.9H267H267V111.4H304H304V128H332H332V105.3H352L342 89.9L332 105.3H352V107.1H389H389V124H400V172Z"/>
+  </defs>
+  <rect width="400" height="172" fill="url(#sky-splash)"/>
+  <g clip-path="url(#clip-splash)">
+    <ellipse cx="200" cy="80.2" rx="190" ry="110" fill="url(#glow-splash)" class="halo"/>
+    <g class="sunrise" style="--rise:143.8px"><circle cx="200" cy="80.2" r="46" fill="url(#sun-splash)"/></g>
+    
+    <g class="sky-far" style="animation-duration:52.2s"><use href="#far-splash" class="far"/><use href="#far-splash" x="400" class="far"/></g>
+    <g class="sky-near" style="animation-duration:17.4s"><use href="#near-splash" class="nearfill"/><use href="#near-splash" x="400" class="nearfill"/><g class="wins"><rect class="win w5" x="30" y="145" width="3" height="4"/><rect class="win w4" x="122" y="123.7" width="3" height="4"/><rect class="win w3" x="163" y="169.8" width="3" height="4"/><rect class="win w0" x="280" y="121.5" width="3" height="4"/><rect class="win w3" x="367" y="126.9" width="3" height="4"/></g><g class="wins" transform="translate(400 0)"><rect class="win w5" x="30" y="145" width="3" height="4"/><rect class="win w4" x="122" y="123.7" width="3" height="4"/><rect class="win w3" x="163" y="169.8" width="3" height="4"/><rect class="win w0" x="280" y="121.5" width="3" height="4"/><rect class="win w3" x="367" y="126.9" width="3" height="4"/></g></g>
+    <g class="rain"></g>
+  </g>
+  <rect y="172" width="400" height="68" class="road"/>
+  <line x1="0" x2="400" y1="172.5" y2="172.5" class="horizon"/>
+  <line class="dash" x1="-60" x2="470" y1="219" y2="219" style="animation-duration:0.4s"/>
+  <g class="lamps" style="animation-duration:4.1s"><g><g transform="translate(20 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g><g transform="translate(150 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g><g transform="translate(280 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g><g transform="translate(410 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g></g><g transform="translate(520 0)"><g transform="translate(20 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g><g transform="translate(150 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g><g transform="translate(280 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g><g transform="translate(410 0)"><path d="M0 172V120q0-6 6-6h12" stroke-width="2.4" fill="none"/><circle cx="19" cy="115" r="2.6" class="lamp"/><rect x="-1.5" y="168" width="3" height="6"/></g></g></g>
+  <g class="streaks"><path class="streak" d="M0 92h26" style="animation-duration:5.2s;animation-delay:0s"/><path class="streak" d="M0 129h45" style="animation-duration:5.2s;animation-delay:-0.7s"/></g>
+  <g class="enter"><g transform="translate(131 108.4) scale(0.3)"><g class="cy">
+    <g class="bike" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g class="wheel" style="animation-duration:0.9s">
+    <circle cx="155" cy="290" r="58" fill="none" stroke-width="9"/>
+    <path d="M155 290L210 290M155 290L193.9 328.9M155 290L155 345M155 290L116.1 328.9M155 290L100 290M155 290L116.1 251.1M155 290L155 235M155 290L193.9 251.1" fill="none" stroke-width="1.8"/>
+    <circle cx="155" cy="290" r="6" class="fill"/>
+    <circle cx="202" cy="290" r="3.4" class="fill valve"/>
+  </g>
+      <g class="wheel" style="animation-duration:0.9s">
+    <circle cx="366" cy="290" r="58" fill="none" stroke-width="9"/>
+    <path d="M366 290L421 290M366 290L404.9 328.9M366 290L366 345M366 290L327.1 328.9M366 290L311 290M366 290L327.1 251.1M366 290L366 235M366 290L404.9 251.1" fill="none" stroke-width="1.8"/>
+    <circle cx="366" cy="290" r="6" class="fill"/>
+    <circle cx="413" cy="290" r="3.4" class="fill valve"/>
+  </g>
+      <path d="M155 290L243 303L214 206Z M214 206L330 191L341 224L243 303 M341 224L366 290 M214 206L210 192" stroke-width="8"/>
+      <path d="M182 189Q206 184 233 190" stroke-width="10"/>
+      <path d="M330 189L360 180Q384 177 386 194Q387 210 371 209" stroke-width="8"/>
+      <path class="crank" stroke-width="7" d="M243 303L274 303"><animate attributeName="d" values="M243 303L274 303;M243 303L272.9 311;M243 303L269.8 318.5;M243 303L264.9 324.9;M243 303L258.5 329.8;M243 303L251 332.9;M243 303L243 334;M243 303L235 332.9;M243 303L227.5 329.8;M243 303L221.1 324.9;M243 303L216.2 318.5;M243 303L213.1 311;M243 303L212 303;M243 303L213.1 295;M243 303L216.2 287.5;M243 303L221.1 281.1;M243 303L227.5 276.2;M243 303L235 273.1;M243 303L243 272;M243 303L251 273.1;M243 303L258.5 276.2;M243 303L264.9 281.1;M243 303L269.8 287.5;M243 303L272.9 295;M243 303L274 303" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+      <path class="crank" stroke-width="7" opacity=".8" d="M243 303L212 303"><animate attributeName="d" values="M243 303L212 303;M243 303L213.1 295;M243 303L216.2 287.5;M243 303L221.1 281.1;M243 303L227.5 276.2;M243 303L235 273.1;M243 303L243 272;M243 303L251 273.1;M243 303L258.5 276.2;M243 303L264.9 281.1;M243 303L269.8 287.5;M243 303L272.9 295;M243 303L274 303;M243 303L272.9 311;M243 303L269.8 318.5;M243 303L264.9 324.9;M243 303L258.5 329.8;M243 303L251 332.9;M243 303L243 334;M243 303L235 332.9;M243 303L227.5 329.8;M243 303L221.1 324.9;M243 303L216.2 318.5;M243 303L213.1 311;M243 303L212 303" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+      <circle cx="243" cy="303" r="11" class="fill"/>
+    </g>
+    <g class="leg far" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path class="thigh" stroke-width="32" d="M222 176L264.4 243.8"><animate attributeName="d" values="M222 176L264.4 243.8;M222 176L269.2 240.6;M222 176L274.6 236.3;M222 176L280.2 230.9;M222 176L285.6 224.5;M222 176L290.4 217.6;M222 176L293.9 211.1;M222 176L296 206.4;M222 176L296.9 204.2;M222 176L296.6 204.9;M222 176L295.2 208.2;M222 176L292.7 213.4;M222 176L288.9 219.9;M222 176L283.7 226.9;M222 176L277.4 233.7;M222 176L270.3 239.8;M222 176L263.2 244.6;M222 176L257.1 247.9;M222 176L253.1 249.7;M222 176L251.6 250.3;M222 176L252 250.2;M222 176L253.8 249.4;M222 176L256.6 248.1;M222 176L260.2 246.3;M222 176L264.4 243.8" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+      <path class="shin" stroke-width="22" d="M264.4 243.8L206 294"><animate attributeName="d" values="M264.4 243.8L206 294;M269.2 240.6L207.1 286;M274.6 236.3L210.2 278.5;M280.2 230.9L215.1 272.1;M285.6 224.5L221.5 267.2;M290.4 217.6L229 264.1;M293.9 211.1L237 263;M296 206.4L245 264.1;M296.9 204.2L252.5 267.2;M296.6 204.9L258.9 272.1;M295.2 208.2L263.8 278.5;M292.7 213.4L266.9 286;M288.9 219.9L268 294;M283.7 226.9L266.9 302;M277.4 233.7L263.8 309.5;M270.3 239.8L258.9 315.9;M263.2 244.6L252.5 320.8;M257.1 247.9L245 323.9;M253.1 249.7L237 325;M251.6 250.3L229 323.9;M252 250.2L221.5 320.8;M253.8 249.4L215.1 315.9;M256.6 248.1L210.2 309.5;M260.2 246.3L207.1 302;M264.4 243.8L206 294" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+      <path class="foot" stroke-width="15" d="M206 294L230 301"><animate attributeName="d" values="M206 294L230 301;M207.1 286L231.1 293;M210.2 278.5L234.2 285.5;M215.1 272.1L239.1 279.1;M221.5 267.2L245.5 274.2;M229 264.1L253 271.1;M237 263L261 270;M245 264.1L269 271.1;M252.5 267.2L276.5 274.2;M258.9 272.1L282.9 279.1;M263.8 278.5L287.8 285.5;M266.9 286L290.9 293;M268 294L292 301;M266.9 302L290.9 309;M263.8 309.5L287.8 316.5;M258.9 315.9L282.9 322.9;M252.5 320.8L276.5 327.8;M245 323.9L269 330.9;M237 325L261 332;M229 323.9L253 330.9;M221.5 320.8L245.5 327.8;M215.1 315.9L239.1 322.9;M210.2 309.5L234.2 316.5;M207.1 302L231.1 309;M206 294L230 301" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+    </g>
+    <g class="rider">
+      <path d="M192 186C170 164 170 114 194 97C222 81 262 71 298 65C314 63 323 73 319 87C313 106 292 115 268 124C250 131 241 152 238 180Z"/>
+      <path d="M300 66L322 60L333 79L312 92Z"/>
+      <circle cx="333" cy="63" r="14"/>
+      <ellipse cx="327" cy="45" rx="27" ry="17" transform="rotate(14 327 45)"/>
+      <path d="M298 88L321 146" fill="none" stroke-width="22" stroke-linecap="round"/>
+      <path d="M321 146L362 184" fill="none" stroke-width="16" stroke-linecap="round"/>
+    </g>
+    <g class="leg near" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path class="thigh" stroke-width="32" d="M222 176L288.9 219.9"><animate attributeName="d" values="M222 176L288.9 219.9;M222 176L283.7 226.9;M222 176L277.4 233.7;M222 176L270.3 239.8;M222 176L263.2 244.6;M222 176L257.1 247.9;M222 176L253.1 249.7;M222 176L251.6 250.3;M222 176L252 250.2;M222 176L253.8 249.4;M222 176L256.6 248.1;M222 176L260.2 246.3;M222 176L264.4 243.8;M222 176L269.2 240.6;M222 176L274.6 236.3;M222 176L280.2 230.9;M222 176L285.6 224.5;M222 176L290.4 217.6;M222 176L293.9 211.1;M222 176L296 206.4;M222 176L296.9 204.2;M222 176L296.6 204.9;M222 176L295.2 208.2;M222 176L292.7 213.4;M222 176L288.9 219.9" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+      <path class="shin" stroke-width="22" d="M288.9 219.9L268 294"><animate attributeName="d" values="M288.9 219.9L268 294;M283.7 226.9L266.9 302;M277.4 233.7L263.8 309.5;M270.3 239.8L258.9 315.9;M263.2 244.6L252.5 320.8;M257.1 247.9L245 323.9;M253.1 249.7L237 325;M251.6 250.3L229 323.9;M252 250.2L221.5 320.8;M253.8 249.4L215.1 315.9;M256.6 248.1L210.2 309.5;M260.2 246.3L207.1 302;M264.4 243.8L206 294;M269.2 240.6L207.1 286;M274.6 236.3L210.2 278.5;M280.2 230.9L215.1 272.1;M285.6 224.5L221.5 267.2;M290.4 217.6L229 264.1;M293.9 211.1L237 263;M296 206.4L245 264.1;M296.9 204.2L252.5 267.2;M296.6 204.9L258.9 272.1;M295.2 208.2L263.8 278.5;M292.7 213.4L266.9 286;M288.9 219.9L268 294" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+      <path class="foot" stroke-width="15" d="M268 294L292 301"><animate attributeName="d" values="M268 294L292 301;M266.9 302L290.9 309;M263.8 309.5L287.8 316.5;M258.9 315.9L282.9 322.9;M252.5 320.8L276.5 327.8;M245 323.9L269 330.9;M237 325L261 332;M229 323.9L253 330.9;M221.5 320.8L245.5 327.8;M215.1 315.9L239.1 322.9;M210.2 309.5L234.2 316.5;M207.1 302L231.1 309;M206 294L230 301;M207.1 286L231.1 293;M210.2 278.5L234.2 285.5;M215.1 272.1L239.1 279.1;M221.5 267.2L245.5 274.2;M229 264.1L253 271.1;M237 263L261 270;M245 264.1L269 271.1;M252.5 267.2L276.5 274.2;M258.9 272.1L282.9 279.1;M263.8 278.5L287.8 285.5;M266.9 286L290.9 293;M268 294L292 301" dur="1.2s" begin="0s" repeatCount="indefinite" calcMode="linear"/></path>
+    </g>
+  </g></g></g>
+  <g class="blades" style="animation-duration:2.4s"><g><path d="M0 240q4-22 9-30q-2 14 3 30z"/><path d="M67 240q4-29 9-36q-2 19 3 36z"/><path d="M134 240q4-36 9-42q-2 14 3 42z"/><path d="M174 240q4-43 9-30q-2 19 3 30z"/><path d="M241 240q4-22 9-36q-2 14 3 36z"/><path d="M308 240q4-29 9-42q-2 19 3 42z"/><path d="M348 240q4-36 9-30q-2 14 3 30z"/><path d="M415 240q4-43 9-36q-2 19 3 36z"/><path d="M482 240q4-22 9-42q-2 14 3 42z"/></g><g transform="translate(522 0)"><path d="M0 240q4-22 9-30q-2 14 3 30z"/><path d="M67 240q4-29 9-36q-2 19 3 36z"/><path d="M134 240q4-36 9-42q-2 14 3 42z"/><path d="M174 240q4-43 9-30q-2 19 3 30z"/><path d="M241 240q4-22 9-36q-2 14 3 36z"/><path d="M308 240q4-29 9-42q-2 19 3 42z"/><path d="M348 240q4-36 9-30q-2 14 3 30z"/><path d="M415 240q4-43 9-36q-2 19 3 36z"/><path d="M482 240q4-22 9-42q-2 14 3 42z"/></g></g>
+</svg>
+    <div class="splash-mark">
+      <p class="wordmark"><span style="--i:0">R</span><span style="--i:1">ü</span><span style="--i:2">c</span><span style="--i:3">k</span><span style="--i:4">e</span><span style="--i:5">n</span><span style="--i:6">w</span><span style="--i:7">i</span><span style="--i:8">n</span><span style="--i:9">d</span></p>
+      <p class="splash-tag">Jeden Morgen die Antwort.</p>
+    </div>
+  </div>
+  <!-- splash:end -->
   <div class="app">
     <main id="view" class="view"></main>
   </div>

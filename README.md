@@ -126,6 +126,10 @@ Wichtig: Alle Befehle im Ordner `worker/` ausführen (die Eingabezeile endet auf
 | `js/app.js` | Oberfläche: Heute, Fahrten, Bilanz, Einstellungen |
 | `js/push.js` | Anmeldung für die Morgenmeldung beim eigenen Push-Dienst |
 | `js/messages.js` | Die Reihe der Morgenmeldungen und ihre Auswahl |
+| `js/scene.js` | Die bewegte Pendelszene: Radfahrer mit tretenden Beinen, Stadt, Straße, Wind und Regen, je nach Wetter |
+| `js/charts.js` | Tagesverlauf, Ersparnis-Profil und Wochenbalken als SVG |
+| `js/motion.js` | Hochzählende Zahlen, Einblenden beim Scrollen, Wischen über Diagramme, Tab-Wechsel, Startbildschirm |
+| `scripts/inject-splash.mjs` | Schreibt den Startbildschirm in `index.html`. Nach Änderungen an `js/scene.js` einmal `node scripts/inject-splash.mjs` ausführen |
 | `worker/` | Cloudflare Worker: prüft morgens das Wetter und schickt die Push-Nachricht |
 | `sw.js` | Offline-Cache der App-Hülle, zeigt Push-Nachrichten an |
 

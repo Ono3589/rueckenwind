@@ -4,6 +4,9 @@ import { askPin, hideLock, showMessage } from './lock.js';
 import { parseHealthText } from './health.js';
 import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay, fetchInbox, ackInbox } from './push.js';
 import { TITLES } from './messages.js';
+import { commuteScene, cyclist } from './scene.js';
+import { dayChart, savingsChart, weeksChart as weeksChartSvg, cumulativeSavings } from './charts.js';
+import { reveal, scrub, slide, runSplash, reducedMotion, formatCount } from './motion.js';
 import { midpoint, distanceM, searchAddress, currentPosition, fetchBikeRoute } from './geo.js';
 import { mapThumb, simplify } from './map.js';
 import { fetchForecast, dayTarget, commuteDone, assessDay, fmtMin, tripMinutes } from './weather.js';
@@ -75,6 +78,8 @@ const I = {
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.7" r="2.3" fill="currentColor"/></svg>',
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+  wheel: '<svg viewBox="0 0 24 24" aria-hidden="true" class="spin"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4" stroke="currentColor" stroke-width="1.1" opacity=".8"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg>',
+  leaf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-8 5-13 14-14 0 9-4 14-12 14M5 19c3-5 6-8 10-10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   flame: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a6 6 0 0 0 6-6c0-3.5-2.5-5.5-3.5-8.5-.8 2.2-2 3.2-3 3.5.3-2.3-.5-4.6-2.5-6.5C9 7 6 9.6 6 15a6 6 0 0 0 6 6z" fill="currentColor"/></svg>',
 };
@@ -84,15 +89,29 @@ const I = {
 const tabs = { heute: renderToday, fahrten: renderRides, bilanz: renderStats, einstellungen: renderSettings };
 const currentTab = () => (tabs[location.hash.slice(1)] ? location.hash.slice(1) : 'heute');
 
+const tabOrder = Object.keys(tabs);
+let shownTab = null;
+
 function render() {
   if (locked) return;
   const tab = currentTab();
   document.querySelectorAll('.tabbar a').forEach((a) => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
+  document.querySelector('.tabbar')?.style.setProperty('--tab-i', tabOrder.indexOf(tab));
+  shownTab = tab;
   tabs[tab]();
+  paint(); // auch für die frühen Zustände (Start, Laden, Fehler); schon Gezeigtes bleibt stehen
 }
 window.addEventListener('hashchange', () => {
-  render();
-  window.scrollTo(0, 0);
+  const from = tabOrder.indexOf(shownTab);
+  const to = tabOrder.indexOf(currentTab());
+  if (from === to || from < 0) {
+    render();
+    return;
+  }
+  slide(() => {
+    render();
+    window.scrollTo(0, 0);
+  }, to - from);
 });
 
 // ---------- Wetter ----------
@@ -230,49 +249,19 @@ const CYCLIST = `
     </g>
   </g>`;
 
-function horizon(status, score, rainy) {
-  // Die Sonne steht umso höher, je besser das Radwetter ist. Davor fährt der Radler auf der Straße.
-  const R = 46;
-  const y = 130 - (score / 100) * 62;
-  const rise = 118 + R - y + 6;
-  const drops = rainy
-    ? Array.from({ length: 12 }, (_, i) => {
-        const x = 30 + i * 23 + (i % 3) * 5;
-        const y0 = 6 + ((i * 37) % 60);
-        return `<line class="drop" style="--d:${(i % 5) * 0.23}s" x1="${x}" y1="${y0}" x2="${x - 3}" y2="${y0 + 9}"/>`;
-      }).join('')
-    : '';
-  return `
-  <svg class="horizon ${status}" viewBox="0 0 320 140" role="img" aria-label="Radwetter ${score} von 100">
-    <defs>
-      <radialGradient id="glow" cx="50%" cy="${(y / 140) * 100}%" r="66%">
-        <stop offset="0" class="glow-a"/><stop offset=".5" class="glow-b"/><stop offset="1" class="glow-c"/>
-      </radialGradient>
-      <radialGradient id="sun" cx="50%" cy="38%" r="70%"><stop offset="0" class="sun-a"/><stop offset="1" class="sun-b"/></radialGradient>
-      <clipPath id="sky"><rect width="320" height="118"/></clipPath>
-    </defs>
-    <rect width="320" height="140" fill="url(#glow)"/>
-    <g clip-path="url(#sky)">
-      <circle class="sun" style="--rise:${rise}px" cx="160" cy="${y}" r="${R}" fill="url(#sun)"/>
-      <g class="rain">${drops}</g>
-    </g>
-    <line class="line" x1="0" y1="118.5" x2="320" y2="118.5"/>
-    <g transform="translate(118.4 61) scale(0.16)">${CYCLIST}</g>
-  </svg>`;
-}
-
 const WIND_WORD = { gegen: 'Gegenwind', rueck: 'Rückenwind', seite: 'Seitenwind' };
 
-function tripCard(label, t, done, canLog, dir) {
+function tripCard(label, t, done, canLog, dir, i) {
   if (!t) return `<article class="trip"><h3>${label}</h3><p class="muted">Keine Daten</p></article>`;
   const rot = t.rel ? (t.windDir + 180 - t.bearing + 360) % 360 : null;
+  const temp = Math.round(t.temp);
   return `
-  <article class="trip sev-${t.sev}">
+  <article class="trip sev-${t.sev}" data-reveal style="--i:${i}">
     <header><h3>${label}</h3><span class="when">${fmtMin(t.start)}</span></header>
-    <p class="temp">${fmt.int(t.temp)}°</p>
+    <p class="bignum"><span class="num" data-count="${temp}">${fmt.int(t.temp)}</span><sup>°</sup></p>
     <ul class="facts">
-      <li>${I.drop}<span>${t.rainProb} %<small>${t.precip > 0.05 ? `${fmt.km(t.precip)} mm Regen` : 'Regenrisiko'}</small></span></li>
-      <li class="wind ${t.rel?.kind ?? ''}">${rot == null ? I.wind : `<i style="transform:rotate(${rot}deg)">${I.arrow}</i>`}<span>${fmt.int(t.wind)} km/h<small>${t.rel ? WIND_WORD[t.rel.kind] : 'Wind'}</small></span></li>
+      <li>${I.drop}<span><b class="num">${t.rainProb}</b><em>%</em><small>${t.precip > 0.05 ? `${fmt.km(t.precip)} mm Regen` : 'Regenrisiko'}</small></span></li>
+      <li class="wind ${t.rel?.kind ?? ''}">${rot == null ? I.wind : `<i style="transform:rotate(${rot}deg)">${I.arrow}</i>`}<span><b class="num">${fmt.int(t.wind)}</b><em>km/h</em><small>${t.rel ? WIND_WORD[t.rel.kind] : 'Wind'}</small></span></li>
     </ul>
     ${
       canLog
@@ -282,36 +271,34 @@ function tripCard(label, t, done, canLog, dir) {
   </article>`;
 }
 
-function timeline(date, day) {
-  const H = forecast.hourly;
-  const inWin = (h, t) => t && h >= Math.floor(t.start / 60) && h <= Math.floor((t.end - 1) / 60);
-  const cols = [];
-  for (let h = 5; h <= 21; h++) {
-    const i = H.time.indexOf(`${date}T${String(h).padStart(2, '0')}:00`);
-    if (i < 0) continue;
-    const p = H.precipitation_probability[i] ?? 0;
-    const mm = H.precipitation[i] ?? 0;
-    const win = inWin(h, day.hin) || inWin(h, day.rueck);
-    cols.push(`
-      <div class="hr${win ? ' win' : ''}" title="${h} Uhr: ${p} % Regenrisiko, ${fmt.km(mm)} mm, ${fmt.int(H.temperature_2m[i])} °C">
-        <span class="bar" style="--p:${Math.max(6, p)}%"></span>
-        <span class="h">${h % 3 === 0 || win ? h : ''}</span>
-      </div>`);
-  }
-  return `<section class="block timeline" aria-label="Regenrisiko im Tagesverlauf">
-    <header class="row"><h2>Regen über den Tag</h2><span class="legend"><i></i>deine Fahrten</span></header>
-    <div class="hours">${cols.join('')}</div>
+// Die Bühne: Szene mit Sonne, Skyline und Straße, davor der Fahrer. Wind und Regen stammen aus der Vorhersage.
+function stage(day, target, rainy, uid = 'hero') {
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const trip = target.isToday && day.hin && day.rueck && nowMin > day.hin.end ? day.rueck : (day.hin ?? day.rueck);
+  const svg = commuteScene({ status: day.status, score: day.score, rainy, windKmh: trip?.wind ?? 8, headKmh: trip?.rel?.head ?? 0, uid, animated: !reducedMotion() });
+  return `<section class="stage ${day.status}" data-reveal>
+    <div class="stage-scene">${svg}</div>
+    <div class="stage-score"><span class="num" data-count="${day.score}">${day.score}</span><span class="cap">Radwetter<small>von 100</small></span></div>
   </section>`;
 }
 
 function onboarding() {
   return `
-  <section class="hero">
-    ${horizon('go', 70, false)}
+  <section class="stage go" data-reveal>
+    <div class="stage-scene">${commuteScene({ status: 'go', score: 78, uid: 'hero', animated: !reducedMotion() })}</div>
+  </section>
+  <section class="verdict go intro">
     <h1>Rückenwind</h1>
     <p class="lead">Jeden Morgen eine klare Antwort, ob heute ein Radtag wird. Dazu deine Kilometer, was du gegenüber dem Auto sparst und was du verbrannt hast.</p>
   </section>
   <a class="btn primary wide" href="#einstellungen">Arbeitsweg festlegen</a>`;
+}
+
+// Nach jedem Zeichnen: Zahlen und Diagramme laufen an, sobald sie im Bild sind; Wischen zeigt Werte
+function paint() {
+  reveal(view);
+  scrub(view);
 }
 
 // Heute oder Morgen: nur diese zwei Tage. Nach dem Rückweg zeigt die App von selbst „Morgen“.
@@ -352,9 +339,12 @@ function renderToday() {
   if (!forecast || forecast.key !== key) {
     ensureForecast();
     view.innerHTML = weatherError
-      ? `<section class="hero no">${horizon('no', 8, false)}<h1>Kein Wetter.</h1><p class="lead">${esc(weatherError)}. Prüf deine Verbindung und versuch es noch einmal.</p></section>
+      ? `<section class="stage no" data-reveal><div class="stage-scene">${commuteScene({ status: 'no', score: 8, uid: 'hero', animated: !reducedMotion() })}</div></section>
+         <section class="verdict no"><h1>Kein Wetter.</h1><p class="lead">${esc(weatherError)}. Prüf deine Verbindung und versuch es noch einmal.</p></section>
          <button class="btn primary wide" data-action="refresh">Erneut versuchen</button>`
-      : `<section class="hero loading">${horizon('caution', 35, false)}<h1>Blick zum Himmel …</h1></section>`;
+      : `<section class="stage caution" data-reveal><div class="stage-scene">${commuteScene({ status: 'caution', score: 35, uid: 'hero', animated: !reducedMotion() })}</div></section>
+         <section class="verdict loading"><h1>Blick zum Himmel …</h1></section>`;
+    paint();
     return;
   }
   ensureForecast(); // im Hintergrund auffrischen, wenn älter als 30 Minuten
@@ -388,25 +378,31 @@ function renderToday() {
     <button role="tab" data-action="day" data-d="1" aria-selected="${dayOffset === 1}">Morgen</button>
   </div>
 
-  <section class="hero ${day.status}">
-    ${horizon(day.status, day.score, rainy)}
+  ${stage(day, target, rainy)}
+
+  <section class="verdict ${day.status}">
     <h1>${day.headline}</h1>
     <p class="lead">${esc(day.reason)}</p>
   </section>
 
   <div class="trips">
-    ${tripCard('Hinweg', day.hin, has('hin'), canLog, 'hin')}
-    ${tripCard('Rückweg', day.rueck, has('rueck'), canLog, 'rueck')}
+    ${tripCard('Hinweg', day.hin, has('hin'), canLog, 'hin', 0)}
+    ${tripCard('Rückweg', day.rueck, has('rueck'), canLog, 'rueck', 1)}
   </div>
 
   ${day.gear.length ? `<ul class="gear" aria-label="Für unterwegs">${day.gear.map((g) => `<li>${I[g.icon]}${esc(g.text)}</li>`).join('')}</ul>` : ''}
 
-  ${timeline(target.date, day)}
+  <section class="block chartcard" data-reveal>
+    <header class="row"><h2>Tagesverlauf</h2></header>
+    ${dayChart(forecast, target.date, day, { nowMin: target.isToday ? new Date().getHours() * 60 + new Date().getMinutes() : null, uid: 'day' })}
+    <ul class="legend-row"><li><i class="k temp"></i>Temperatur</li><li><i class="k rain"></i>Regenrisiko</li><li><i class="k ride"></i>deine Fahrten</li></ul>
+  </section>
 
   <footer class="source">
     <span>Open-Meteo · ${fmt.time(forecast.fetchedAt)}</span>
     <button class="refresh${weatherLoading ? ' spinning' : ''}" data-action="refresh" aria-label="Wetter aktualisieren">${I.refresh}</button>
   </footer>`;
+  paint();
 }
 
 // ---------- Ansicht: Fahrten ----------
@@ -563,14 +559,18 @@ function renderRides() {
   for (const r of rides) {
     const d = new Date(`${r.date}T12:00:00`);
     const k = `${d.getFullYear()}-${isoWeek(d)}`;
-    if (!groups.has(k)) groups.set(k, { label: `Woche ${isoWeek(d)}`, from: startOfWeek(d).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }), rides: [] });
+    if (!groups.has(k)) groups.set(k, { label: `Woche ${isoWeek(d)}`, monday: startOfWeek(d), from: startOfWeek(d).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }), rides: [] });
     groups.get(k).rides.push(r);
   }
   const s = state.strava;
   const connected = !!s.refreshToken;
 
   view.innerHTML = `
-  <header class="page"><h1>Fahrten</h1><p class="muted">${rides.length ? `${rides.length} Fahrten · ${fmt.km(rides.reduce((a, r) => a + r.km, 0))} km` : 'Noch keine Fahrten. Trag deine erste unten ein.'}</p></header>
+  <header class="page"><h1>Fahrten</h1>${
+    rides.length
+      ? `<p class="mega-line" data-reveal><span class="num" data-count="${rides.reduce((a, r) => a + r.km, 0)}" data-dec="1">${fmt.km(rides.reduce((a, r) => a + r.km, 0))}</span><small>km in ${rides.length} Fahrten</small></p>`
+      : '<p class="muted">Noch keine Fahrten. Trag deine erste unten ein.</p>'
+  }</header>
 
   ${healthCard()}
   ${
@@ -597,7 +597,8 @@ function renderRides() {
     .map(
       (g) => `
     <section class="week">
-      <h2>${g.label}<small>ab ${g.from}</small><span>${fmt.km(g.rides.reduce((a, r) => a + r.km, 0))} km</span></h2>
+      <h2><span class="wk">${g.label}<small>ab ${g.from}</small></span><span class="wkm"><span class="num">${fmt.km(g.rides.reduce((a, r) => a + r.km, 0))}</span><small>km</small></span></h2>
+      ${weekStrip(g.monday)}
       <ul class="rides">
         ${g.rides
           .map(
@@ -608,7 +609,7 @@ function renderRides() {
               <strong>${fmt.dayShort(r.date)} · ${r.direction === 'hin' ? 'Hinweg' : 'Rückweg'}</strong>
               <span>${{ strava: 'Strava', health: 'Apple Health' }[r.source] ?? 'Manuell'}${r.minutes ? ` · ${r.minutes} min` : ''} · ${fmt.int(r.kcal)} kcal${r.kcalSource === 'schätzung' ? '*' : ''}</span>
             </div>
-            <div class="nums"><strong>${fmt.km(r.km)} km</strong><span class="save">+${fmt.eur(rideSaving(r, perKm))}</span></div>
+            <div class="nums"><strong><span class="num">${fmt.km(r.km)}</span><small>km</small></strong><span class="save">+${fmt.eur(rideSaving(r, perKm))}</span></div>
             <button class="icon-btn" data-action="delete-ride" data-id="${r.id}" aria-label="Fahrt löschen">${I.trash}</button>
           </li>`,
           )
@@ -617,7 +618,28 @@ function renderRides() {
     </section>`,
     )
     .join('')}
-  ${rides.some((r) => r.kcalSource === 'schätzung') ? '<p class="footnote">* Geschätzt aus Gewicht und Fahrtdauer. Mit den Kiox-Daten über Strava wird es genauer.</p>' : ''}`;
+  ${rides.some((r) => r.kcalSource === 'schätzung') ? '<p class="footnote">* Geschätzt aus Gewicht und Fahrtdauer. Mit Daten aus Apple Health wird es genauer.</p>' : ''}`;
+  paint();
+}
+
+// Mo bis Fr (deine Arbeitstage) als Punkte: ganz gefüllt = hin und zurück, halb = ein Weg, leer = nicht gefahren
+function weekStrip(monday) {
+  const names = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  const todayKey = todayISO();
+  const days = names.map((n, i) => {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    return { n, iso: localISO(d), dow: (i + 1) % 7 };
+  }).filter((d) => state.route.workdays.includes(d.dow));
+  return `<div class="weekstrip" role="img" aria-label="Fahrten dieser Woche">${days
+    .map((d, i) => {
+      const r = state.rides.filter((x) => x.date === d.iso);
+      const hin = r.some((x) => x.direction === 'hin');
+      const rueck = r.some((x) => x.direction === 'rueck');
+      const kind = hin && rueck ? 'full' : hin || rueck ? 'half' : d.iso > todayKey ? 'future' : 'none';
+      return `<span class="wd ${kind}" style="--i:${i}"><i></i><b>${d.n}</b></span>`;
+    })
+    .join('')}</div>`;
 }
 
 // ---------- Ansicht: Bilanz ----------
@@ -633,7 +655,9 @@ function periodRange(p, now = new Date()) {
   return { from: '0000-00-00', lead: 'Insgesamt' };
 }
 
-function weeksChart() {
+const cyclistGlyph = () => cyclist({ animated: false });
+
+function weekData() {
   const now = new Date();
   const weeks = [];
   for (let i = 11; i >= 0; i--) {
@@ -643,24 +667,19 @@ function weeksChart() {
     end.setDate(end.getDate() + 7);
     const a = localISO(start);
     const b = localISO(end);
-    weeks.push({ label: isoWeek(start), km: state.rides.filter((r) => r.date >= a && r.date < b).reduce((s, r) => s + r.km, 0), current: i === 0 });
+    weeks.push({ label: String(isoWeek(start)), km: state.rides.filter((r) => r.date >= a && r.date < b).reduce((s, r) => s + r.km, 0), current: i === 0 });
   }
-  const max = Math.max(state.route.distanceKm * 10, ...weeks.map((w) => w.km));
-  const W = 320;
-  const bw = W / weeks.length;
-  const bars = weeks
-    .map((w, i) => {
-      const h = (w.km / max) * 100;
-      return `<g><title>KW ${w.label}: ${fmt.km(w.km)} km</title>
-        <rect class="${w.current ? 'cur' : ''}" x="${i * bw + 7}" y="${112 - h}" width="${bw - 14}" height="${Math.max(h, 3)}" rx="4"/>
-        <text x="${i * bw + bw / 2}" y="130">${w.label}</text></g>`;
-    })
-    .join('');
-  const goal = 112 - ((state.route.distanceKm * 10) / max) * 100;
-  return `<svg class="chart" viewBox="0 0 ${W} 136" role="img" aria-label="Kilometer der letzten 12 Wochen">
-    <line class="goal" x1="0" x2="${W}" y1="${goal}" y2="${goal}"/>
-    ${bars}
-  </svg>`;
+  return weeks;
+}
+
+// Zwei Spuren: Auto und E-Bike. Der Balken wächst, das Fahrzeug fährt an seiner Spitze mit.
+const CAR_GLYPH = '<svg viewBox="0 0 48 22" aria-hidden="true"><path d="M2 15.5v-3.4l4.6-1.1 4.4-5.1c.6-.7 1.4-1 2.2-1h13c1 0 1.9.4 2.6 1.1l4.5 4.2 6.3 1.2c1.2.2 2.1 1.3 2.1 2.5v1.6h-2.6a4.7 4.7 0 0 0-9.4 0H16.6a4.7 4.7 0 0 0-9.4 0H2z"/><circle cx="11.9" cy="16" r="3" class="hub"/><circle cx="36.1" cy="16" r="3" class="hub"/></svg>';
+const BIKE_GLYPH = `<svg viewBox="100 38 300 320" aria-hidden="true" class="cy-mini">${cyclistGlyph()}</svg>`;
+
+function laneHtml(kind, label, value, ratio, glyph) {
+  return `<div class="lane ${kind}"><span class="who">${label}</span>
+    <div class="track" style="--w:${Math.max(3, ratio * 100)}%"><i></i><span class="run"><span class="glyph">${glyph}</span></span></div>
+    <strong class="num" data-count="${value * 100}" data-dec="1">${fmt.km(value * 100)}<small>ct</small></strong></div>`;
 }
 
 function renderStats() {
@@ -673,6 +692,10 @@ function renderStats() {
   const fuel = FUEL[car.fuel] ?? FUEL.benzin;
   const diff = sum.perKm.car.total - sum.perKm.bike.total;
   const maxPerKm = Math.max(sum.perKm.car.total, sum.perKm.bike.total, 0.01);
+  const profile = cumulativeSavings(rides, diff, car.parkingPerDay || 0);
+  const goal = Math.round(state.route.distanceKm * 10);
+  const tile = (i, ico, label, value, dec, unit, sub) => `<div class="figtile" data-reveal style="--i:${i}"><i class="ico">${ico}</i><dt>${label}</dt><dd><span class="num" data-count="${value}" data-dec="${dec}">${formatCount(value, { dec })}</span><small>${unit}</small></dd><em>${sub}</em></div>`;
+  const n = streak();
 
   view.innerHTML = `
   <header class="page"><h1>Bilanz</h1></header>
@@ -682,41 +705,48 @@ function renderStats() {
 
   ${
     sum.rides
-      ? `<section class="statement">
-          <p>${range.lead} hast du <strong>${fmt.eur(sum.saved)}</strong> gespart.</p>
+      ? `<section class="mega-hero" data-reveal>
+          <p class="cap">${range.lead} gespart</p>
+          <p class="mega"><span class="num" data-count="${sum.saved}" data-dec="2" data-cur>${fmt.eur(sum.saved)}</span></p>
           <p class="muted">Gegenüber deinem ${esc(car.name || 'Auto')}, ${car.mode === 'voll' ? 'mit Vollkosten' : 'nur laufende Kosten'} gerechnet.</p>
         </section>
-        <dl class="figures">
-          <div><dt>Strecke</dt><dd>${fmt.km(sum.km)} km<small>${sum.rides} ${sum.rides === 1 ? 'Fahrt' : 'Fahrten'} an ${sum.days} ${sum.days === 1 ? 'Tag' : 'Tagen'}</small></dd></div>
-          <div><dt>Verbrannt</dt><dd>${fmt.int(sum.kcal)} kcal<small>etwa ${fmt.int(sum.kcal / 230)} Laugenbrezeln</small></dd></div>
-          <div><dt>CO₂ vermieden</dt><dd>${fmt.km(sum.co2Kg)} kg<small>${fmt.km(sum.fuelSaved)} ${fuel.unit} ${car.fuel === 'elektro' ? 'Strom' : fuel.label} nicht verbraucht</small></dd></div>
-          <div><dt>Serie</dt><dd>${streak()} ${streak() === 1 ? 'Arbeitstag' : 'Arbeitstage'}<small>in Folge mit dem Rad</small></dd></div>
+        <section class="block chartcard" data-reveal>
+          <header class="row"><h2>Ersparnis-Profil</h2><span class="legend"><i class="k go"></i>laufende Summe</span></header>
+          ${savingsChart(profile, { uid: 'sv' })}
+        </section>
+        <dl class="bigfigs">
+          ${tile(0, I.wheel, 'Strecke', sum.km, 1, 'km', `${sum.rides} ${sum.rides === 1 ? 'Fahrt' : 'Fahrten'} an ${sum.days} ${sum.days === 1 ? 'Tag' : 'Tagen'}`)}
+          ${tile(1, I.flame, 'Verbrannt', sum.kcal, 0, 'kcal', `etwa ${fmt.int(sum.kcal / 230)} Laugenbrezeln`)}
+          ${tile(2, I.leaf, 'CO₂ vermieden', sum.co2Kg, 1, 'kg', `${fmt.km(sum.fuelSaved)} ${fuel.unit} ${car.fuel === 'elektro' ? 'Strom' : fuel.label} gespart`)}
+          ${tile(3, I.arrow, 'Serie', n, 0, n === 1 ? 'Tag' : 'Tage', 'Arbeitstage in Folge')}
         </dl>`
       : `<section class="statement empty">
           <p>${range.lead} bist du noch nicht gefahren.</p>
-          <p class="muted">Trag deine erste Fahrt ein oder verbinde Strava, dann füllt sich die Bilanz.</p>
+          <p class="muted">Trag deine erste Fahrt ein oder hol sie aus Apple Health, dann füllt sich die Bilanz.</p>
           <a class="btn" href="#fahrten">Fahrt eintragen</a>
         </section>`
   }
 
-  <section class="block">
-    <header class="row"><h2>Letzte 12 Wochen</h2><span class="legend goal"><i></i>${fmt.int(state.route.distanceKm * 10)} km Ziel</span></header>
-    ${weeksChart()}
+  <section class="block chartcard" data-reveal>
+    <header class="row"><h2>Letzte 12 Wochen</h2><span class="legend"><i class="k goal"></i>${goal} km Ziel</span></header>
+    ${weeksChartSvg(weekData(), goal, { uid: 'wk' })}
   </section>
 
-  <section class="block perkm">
+  <section class="block race" data-reveal>
     <h2>Kosten pro Kilometer</h2>
-    <div class="cmp"><span>Auto</span><div class="track"><i class="car" style="width:${(sum.perKm.car.total / maxPerKm) * 100}%"></i></div><strong>${fmt.ct(sum.perKm.car.total)}</strong></div>
-    <div class="cmp"><span>E-Bike</span><div class="track"><i class="bike" style="width:${(sum.perKm.bike.total / maxPerKm) * 100}%"></i></div><strong>${fmt.ct(sum.perKm.bike.total)}</strong></div>
+    ${laneHtml('car', 'Auto', sum.perKm.car.total, sum.perKm.car.total / maxPerKm, CAR_GLYPH)}
+    ${laneHtml('bike', 'E-Bike', sum.perKm.bike.total, sum.perKm.bike.total / maxPerKm, BIKE_GLYPH)}
     <p class="note">Jeder Radkilometer spart ${fmt.ct(diff)}${car.parkingPerDay ? `, dazu ${fmt.eur(car.parkingPerDay)} Parken pro Arbeitstag` : ''}. Die Werte stellst du unter <a href="#einstellungen">Einstellungen</a> ein.</p>
   </section>
 
-  <section class="block tax">
+  <section class="block tax" data-reveal>
     <h2>Entfernungspauschale ${new Date().getFullYear()}</h2>
-    <p class="formula">${year.days} Tage × ${fmt.km(state.route.distanceKm)} km × ${fmt.eur(state.tax.ratePerKm)} = <strong>${fmt.eur(year.taxAmount)}</strong></p>
+    <p class="mega small"><span class="num" data-count="${year.taxAmount}" data-dec="2" data-cur>${fmt.eur(year.taxAmount)}</span></p>
+    <p class="formula">${year.days} Tage × ${fmt.km(state.route.distanceKm)} km × ${fmt.eur(state.tax.ratePerKm)}</p>
     <p class="note">Werbungskosten für die Steuererklärung, gilt auch fürs Rad. Den Satz vor der Abgabe prüfen.</p>
     <button class="btn" data-action="export-csv">Fahrten als CSV exportieren</button>
   </section>`;
+  paint();
 }
 
 // ---------- Ansicht: Einstellungen ----------
@@ -1144,7 +1174,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.13 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.14 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1864,8 +1894,8 @@ function boot() {
   if (state.route.home && state.route.work && ((!state.route.distanceManual && !state.route.distanceSource) || !state.route.path?.length)) updateRouteDistance();
 }
 
-if (locked) unlockFlow().then(boot);
-else boot();
+document.documentElement.classList.toggle('motion', !reducedMotion());
+runSplash({ onLeave: () => (locked ? unlockFlow().then(boot) : boot()) });
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
