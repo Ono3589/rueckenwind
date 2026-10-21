@@ -901,3 +901,4 @@ html { touch-action: manipulation; }
 .bosch-state i { width: 10px; height: 10px; border-radius: 50%; background: var(--go); box-shadow: 0 0 0 4px color-mix(in srgb, var(--go) 22%, transparent); }
 .bosch-state.bad i { background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent); }
 .steps .codebox { margin: 6px 0; }
+.diag summary { cursor: pointer; font-size: var(--fs-small); color: var(--muted); padding: 4px 0; }

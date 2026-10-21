@@ -505,6 +505,15 @@ const ago = (iso) => {
   return `vor ${Math.round(min / 1440)} Tagen`;
 };
 
+// Was Bosch bei der letzten Abfrage geliefert hat: Anzahl und Feldnamen, nie Inhalte
+function boschDiag(i) {
+  if (!i) return '';
+  const lead = i.fetched === 0 ? 'Bosch hat bei der letzten Abfrage <strong>keine Fahrten</strong> geliefert.' : `Bosch hat bei der letzten Abfrage <strong>${i.fetched} ${i.fetched === 1 ? 'Fahrt' : 'Fahrten'}</strong> geliefert, ${i.imported} neu.`;
+  const bad = i.unreadable ? ` Bei ${i.unreadable} fehlt eine lesbare Startzeit.` : '';
+  const shape = i.fetched === 0 ? ` Antwort von Bosch: HTTP ${esc(i.http ?? '?')}, Felder: ${i.bodyKeys?.length ? esc(i.bodyKeys.join(', ')) : 'keine'}${i.total != null ? `, Gesamtzahl ${esc(i.total)}` : ''}.` : '';
+  return `<p class="note">${lead}${bad}${shape}</p>${i.fields?.length ? `<details class="diag"><summary>Felder einer Fahrt</summary><code class="codebox">${esc(i.fields.join(', '))}</code></details>` : ''}`;
+}
+
 function boschBody() {
   const base = normalizeUrl(state.notify.url);
   const info = boschInfo;
@@ -524,6 +533,7 @@ function boschBody() {
     return `<p class="bosch-state ${bad ? 'bad' : 'ok'}"><i></i><strong>${info.needsLogin ? 'Anmeldung abgelaufen' : bad ? 'Verbunden, letzte Abfrage mit Problem' : 'Verbunden'}</strong></p>
       <p class="note">Letzte Abfrage ${esc(ago(info.lastCheck))}. Letzte Fahrt bei Bosch: ${info.lastRide ? esc(new Date(info.lastRide).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) : 'noch keine gesehen'}.</p>
       ${bad ? `<p class="note warn">${esc(bad)}</p>` : ''}
+      ${boschDiag(info.lastInfo)}
       <p class="note">Neue Fahrten kommen automatisch. Bosch bekommt sie erst, wenn die eBike-Flow-App sie von der Kiox geholt hat, das passiert meist von selbst kurz nach der Fahrt.</p>
       <div class="actions">
         <button class="btn primary" data-action="bosch-sync" ${boschBusy ? 'disabled' : ''}>${I.refresh}Jetzt abfragen</button>
@@ -1432,7 +1442,7 @@ const actions = {
       const r = await boschSync({ url, token });
       if (r.error) return toast(r.error);
       await pullInbox({ manual: true });
-      if (!r.imported) toast(r.fetched ? 'Bosch abgefragt, nichts Neues' : 'Bosch hat noch keine Fahrten geliefert');
+      if (!r.imported) toast(r.fetched ? `Bosch lieferte ${r.fetched} ${r.fetched === 1 ? 'Fahrt' : 'Fahrten'}, nichts Neues` : 'Bosch hat keine Fahrten geliefert');
     }),
   'bosch-disconnect': () => {
     if (!confirm('Verbindung zu Bosch trennen? Schon übernommene Fahrten bleiben.')) return;

@@ -126,9 +126,11 @@ async function getActivities(env, conn, now, fetchImpl) {
   if (res.status === 403) throw new BoschError('Bosch verweigert den Zugriff. Schalte die Freigabe für Rückenwind und für dein Bike im Flow-Portal ein (Data Act).', 'access');
   if (res.status === 429) throw new BoschError('Bosch bremst gerade ab (zu viele Anfragen). Das nächste Mal klappt es wieder.', 'api');
   if (!res.ok) throw new BoschError(`Bosch meldet Fehler ${res.status}.`, 'api');
-  const body = await res.json().catch(() => ({}));
-  const list = body.activitySummaries ?? body.activities ?? body.items ?? [];
-  return { activities: Array.isArray(list) ? list : [], conn: auth.conn };
+  const body = await res.json().catch(() => null);
+  // Bekannter Name zuerst, sonst die erste Liste in der Antwort: so geht keine Fahrt verloren, falls Bosch das Feld anders nennt
+  const named = body?.activitySummaries ?? body?.activities ?? body?.items;
+  const list = Array.isArray(named) ? named : Array.isArray(body) ? body : Object.values(body && typeof body === 'object' ? body : {}).find(Array.isArray) ?? [];
+  return { activities: list, conn: auth.conn, shape: { http: res.status, bodyKeys: body && typeof body === 'object' ? Object.keys(body).slice(0, 12) : [], total: body?.pagination?.total ?? null } };
 }
 
 // ---------- Umrechnen in die Zeilen, die die App versteht ----------
@@ -169,7 +171,7 @@ export async function syncBosch(env, now, { tz, localParts, putInbox, fetchImpl 
   if (!conn) return { connected: false };
   let current = conn;
   try {
-    const { activities, conn: updated } = await getActivities(env, conn, now, fetchImpl);
+    const { activities, conn: updated, shape } = await getActivities(env, conn, now, fetchImpl);
     current = updated;
     const seen = new Set(current.seen ?? []);
     const since = now.getTime() - LOOKBACK_DAYS * 86400000;
@@ -186,11 +188,14 @@ export async function syncBosch(env, now, { tz, localParts, putInbox, fetchImpl 
     }
     if (lines.length) await putInbox(lines.join('\n'));
     const newest = activities.map((a) => parseStart(a?.startTime)).filter(Boolean).sort((x, y) => y - x)[0];
-    const saved = { ...current, seen: [...seen].slice(-MAX_SEEN), lastCheck: now.toISOString(), lastError: null, lastRide: newest ? newest.toISOString() : current.lastRide };
-    await env.SUBS.put(CONN, JSON.stringify(saved));
-    // Nur Feldnamen, nie Werte: damit sich prüfen lässt, ob Bosch das erwartete Format liefert
+    // Nur Feldnamen und Anzahlen, nie Werte: damit sich prüfen lässt, ob Bosch das erwartete Format liefert
     const first = activities[0];
-    return { connected: true, fetched: activities.length, imported: lines.length, fields: first && typeof first === 'object' ? Object.keys(first) : [] };
+    const fields = first && typeof first === 'object' ? Object.keys(first).slice(0, 30) : [];
+    const unreadable = activities.filter((a) => !parseStart(a?.startTime)).length;
+    const lastInfo = { ...shape, fetched: activities.length, imported: lines.length, unreadable, fields };
+    const saved = { ...current, seen: [...seen].slice(-MAX_SEEN), lastCheck: now.toISOString(), lastError: null, lastInfo, lastRide: newest ? newest.toISOString() : current.lastRide };
+    await env.SUBS.put(CONN, JSON.stringify(saved));
+    return { connected: true, fetched: activities.length, imported: lines.length, fields, lastInfo };
   } catch (e) {
     const err = e instanceof BoschError ? e : new BoschError(String(e?.message ?? e), 'api');
     await env.SUBS.put(CONN, JSON.stringify({ ...current, lastCheck: now.toISOString(), lastError: err.message, needsLogin: err.code === 'login' }));
@@ -202,7 +207,7 @@ export async function boschStatus(env) {
   const c = await env.SUBS.get(CONN, 'json');
   const keyReady = !!env.BOSCH_KEY;
   if (!c) return { connected: false, keyReady };
-  return { connected: true, keyReady, clientId: c.clientId, since: c.connected, lastCheck: c.lastCheck, lastRide: c.lastRide, lastError: c.lastError ?? null, needsLogin: !!c.needsLogin };
+  return { connected: true, keyReady, clientId: c.clientId, since: c.connected, lastCheck: c.lastCheck, lastRide: c.lastRide, lastError: c.lastError ?? null, needsLogin: !!c.needsLogin, lastInfo: c.lastInfo ?? null };
 }
 
 export async function boschDisconnect(env) {

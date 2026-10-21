@@ -196,3 +196,37 @@ test('Trennen löscht die Verbindung, der Status verlangt das Token', async () =
   assert.equal(env.SUBS.m.has('bosch:conn'), false);
   assert.deepEqual(await runBoschSync(env, NOW), { connected: false });
 });
+
+test('Diagnose: Anzahl und Feldnamen der Bosch-Antwort werden im Status gezeigt, nie Werte', async () => {
+  const bosch = fakeBosch({ activities: [ride('a1', '2026-10-15T05:31:00Z')] });
+  const env = makeEnv(bosch.impl);
+  await connect(env);
+  const status = await (await get(env, '/bosch/status')).json();
+  assert.equal(status.lastInfo.fetched, 1);
+  assert.equal(status.lastInfo.imported, 1);
+  assert.deepEqual(status.lastInfo.bodyKeys, ['activitySummaries']);
+  assert.ok(status.lastInfo.fields.includes('distance'));
+  assert.ok(!JSON.stringify(status).includes('10400'), 'keine Messwerte im Status');
+});
+
+test('Liefert Bosch die Liste unter einem anderen Namen, wird sie trotzdem gefunden', async () => {
+  const env = makeEnv(async (url, init) => {
+    if (String(url).includes('/token')) return new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', expires_in: 300 }));
+    return new Response(JSON.stringify({ data: [ride('z1', '2026-10-15T05:31:00Z')], pagination: { total: 1 } }));
+  });
+  await connect(env);
+  const status = await (await get(env, '/bosch/status')).json();
+  assert.equal(status.lastInfo.fetched, 1);
+  assert.equal(status.lastInfo.total, 1);
+  assert.ok([...env.SUBS.m.keys()].some((k) => k.startsWith('inbox:')));
+});
+
+test('Leere Antwort: der Status sagt, was Bosch geschickt hat', async () => {
+  const env = makeEnv(async (url) => (String(url).includes('/token') ? new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', expires_in: 300 })) : new Response(JSON.stringify({ activitySummaries: [], pagination: { total: 0 } }))));
+  await connect(env);
+  const { lastInfo } = await (await get(env, '/bosch/status')).json();
+  assert.equal(lastInfo.fetched, 0);
+  assert.deepEqual(lastInfo.bodyKeys, ['activitySummaries', 'pagination']);
+  assert.equal(lastInfo.http, 200);
+  assert.equal(lastInfo.total, 0);
+});
