@@ -1,43 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="g" cx="50%" cy="50%" r="60%">
-      <stop offset="0" stop-color="#FF8A4C" stop-opacity=".5"/>
-      <stop offset=".55" stop-color="#FF8A4C" stop-opacity=".1"/>
-      <stop offset="1" stop-color="#FF8A4C" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="s" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="#FFF0C9"/><stop offset="1" stop-color="#FF8A52"/></radialGradient>
-    <clipPath id="c"><rect width="512" height="390"/></clipPath>
-  </defs>
-  <rect width="512" height="512" fill="#0B1220"/>
-  <rect width="512" height="512" fill="url(#g)"/>
-  <circle cx="256" cy="250" r="170" fill="url(#s)" clip-path="url(#c)"/>
-  <line x1="0" y1="391" x2="512" y2="391" stroke="#060A13" stroke-width="7"/>
-  <g transform="translate(56 116) scale(0.77)">
-    <style>.bike{stroke:#060A13} .ring,.rider{fill:#060A13;stroke:#060A13}</style>
-  <g class="cyclist" stroke-linecap="round" stroke-linejoin="round">
-    <g class="bike" fill="none">
-      <circle cx="155" cy="290" r="61" stroke-width="11"/>
-      <circle cx="366" cy="290" r="61" stroke-width="11"/>
-      <path d="M155 290 L243 303 L214 206 Z M214 206 L330 191 L341 224 L243 303 M341 224 L366 290 M214 206 L210 192" stroke-width="9"/>
-      <path d="M182 189 Q206 184 233 190" stroke-width="10"/>
-      <path d="M330 189 L360 180 Q384 177 386 194 Q387 210 371 209" stroke-width="8"/>
-      <path d="M262 271 L224 335" stroke-width="7"/>
-      <circle cx="243" cy="303" r="15" class="ring"/>
-    </g>
-    <g class="rider" stroke-width="2">
-      <path d="M192 186 C170 164 170 114 194 97 C222 81 262 71 298 65 C314 63 323 73 319 87 C313 106 292 115 268 124 C250 131 241 152 238 180 Z"/>
-      <path d="M300 66 L322 60 L333 79 L312 92 Z"/>
-      <circle cx="333" cy="63" r="14"/>
-      <ellipse cx="327" cy="45" rx="27" ry="17" transform="rotate(14 327 45)"/>
-      <path d="M298 88 L321 146" fill="none" stroke-width="22"/>
-      <path d="M321 146 L362 184" fill="none" stroke-width="16"/>
-      <path d="M222 150 L283 176" fill="none" stroke-width="36"/>
-      <path d="M283 176 L260 263" fill="none" stroke-width="22"/>
-      <path d="M258 264 L276 274" fill="none" stroke-width="13"/>
-      <path d="M215 158 L248 232" fill="none" stroke-width="32"/>
-      <path d="M248 232 L219 302" fill="none" stroke-width="20"/>
-      <path d="M216 304 L234 322" fill="none" stroke-width="13"/>
-    </g>
-  </g>
-  </g>
+<svg viewBox="0 0 243 243" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_2257_102)">
+<rect width="243" height="243" fill="black"/>
+<path d="M82.0513 237.004L13.5195 67.2709C6.84621 50.7431 18.4044 32.5539 36.2017 31.5758L316.588 16.166C329.754 15.4425 336.528 31.6582 326.761 40.5156L104.438 242.133C97.223 248.676 85.6978 246.036 82.0513 237.004Z" fill="url(#paint0_linear_2257_102)" stroke="black"/>
+<circle cx="198" cy="62" r="25" fill="black"/>
+<path d="M64.7934 219.519L30.5883 135.122C27.6635 127.905 17.9765 126.653 13.3126 132.889L-56.1494 225.762C-61.3092 232.661 -55.9128 242.42 -47.3266 241.718L56.3406 233.242C63.067 232.692 67.3284 225.774 64.7934 219.519Z" fill="url(#paint1_linear_2257_102)"/>
+<path d="M113.491 60.2274C152.067 49.8666 170.596 66.1152 174.782 88.5648C178.286 107.358 155.195 124.8 138.39 138.648C133.828 142.408 134.469 149.359 139.495 152.472L208.858 195.43L193.282 208.44L120.795 162.438C109.258 155.117 108.896 139.447 120.091 131.612C138.344 118.837 159.03 102.442 156.334 89.3206C152.248 69.4305 130.421 73.2736 118.924 76.6147C111.695 78.7152 81.986 86.661 60.9204 92.2721C51.225 94.8546 47.98 106.979 55.0883 114.06L92.7634 151.591C95.3677 154.186 96.9287 157.646 97.1499 161.315L101.89 239.929L86.2548 254.153L20.149 109.616C15.0171 98.3953 21.1641 85.2523 33.0696 82.0122C55.3798 75.9406 89.4724 66.6785 113.491 60.2274Z" fill="black"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_2257_102" x1="51.6189" y1="137.007" x2="385.195" y2="-11.8666" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FF5100"/>
+<stop offset="1" stop-color="#F6C559"/>
+</linearGradient>
+<linearGradient id="paint1_linear_2257_102" x1="43.1372" y1="164.971" x2="-42.79" y2="235.98" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FF5201"/>
+<stop offset="1" stop-color="#F8B24B"/>
+</linearGradient>
+<clipPath id="clip0_2257_102">
+<rect width="243" height="243" fill="white"/>
+</clipPath>
+</defs>
 </svg>
