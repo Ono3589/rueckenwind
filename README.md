@@ -60,6 +60,8 @@ Die Anmeldung läuft als OAuth 2.0 mit PKCE als öffentlicher Client. Es gibt ke
    ```
 4. In der App unter Einstellungen → Bosch eBike Flow die Client-ID (beginnt mit `euda-`) eintragen und „Mit Bosch verbinden“ tippen. Nach der Bosch-Anmeldung das Fenster mit „Fertig“ schließen.
 
+**Abgleich mit deinen Einträgen:** Gibt es für einen Tag und eine Richtung schon eine Fahrt (von Hand, Strava oder ein älterer Bosch-Stand), überschreibt Bosch sie nicht selbst. Die Fahrt erscheint unter **Fahrten → Abgleich mit Bosch** neben deinem Eintrag, und du entscheidest: **Überschreiben** oder **Behalten**. Behaltene Einträge bietet Bosch auch beim „Fahrten neu laden“ nicht noch einmal an. Um bestehende Einträge mit Bosch abzugleichen, in der Bosch-Karte **Fahrten neu laden** tippen.
+
 **Was dabei passiert:** Der Dienst holt höchstens die letzten 14 Tage und jede Fahrt nur einmal. Er speichert Datum, Startzeit, Strecke, Dauer und Kalorien, keine GPS-Spur. Passende Pendelfahrten übernimmt die App beim Öffnen von selbst, alles andere landet unter „Fahrten → zur Prüfung“. Hin oder Rück bestimmt wie bisher die Startzeit.
 
 **Grenzen:** Nur Bosch-Konten aus der EU und nur Smart-System-Bikes (die mit der Flow-App). Bosch veröffentlicht eine Fahrt erst, wenn die eBike-Flow-App sie von der Kiox geholt hat. Die Felder der Schnittstelle (`distance`, `durationWithoutStops`, `caloriesBurned`, `startTime`) stammen aus einer laufenden Open-Source-Integration, Boschs eigene Dokumentation liegt hinter dem Portal-Login. Zeigt „Jetzt abfragen“ Fahrten an, die nicht ankommen, hilft eine Rückmeldung mit der Fehlermeldung aus der Karte.
@@ -115,6 +117,7 @@ Wichtig: Alle Befehle im Ordner `worker/` ausführen (die Eingabezeile endet auf
 | `js/weather.js` | Open-Meteo-Abfrage, Bewertung von Hin- und Rückweg, Wind relativ zur Fahrtrichtung, Ausrüstungstipps |
 | `js/costs.js` | Kosten pro km für Auto (aus Verbrauch, Preis, Jahreskosten) und E-Bike, CO₂, Bilanz, Entfernungspauschale |
 | `js/strava.js` | OAuth, Aktivitäten laden, Pendelfahrten erkennen (optional, Strava-Abo nötig) |
+| `js/reconcile.js` | Abgleich: neue Bosch-Fahrten gegen vorhandene Einträge (übernehmen, zur Prüfung, Konflikt) |
 | `js/health.js` | Fahrten als Textzeilen lesen und prüfen (so liefert der Dienst die Bosch-Fahrten), teilt Hin- und Rückweg in einer Fahrt |
 | `js/geo.js` | Distanz, Kurs, Adresssuche (OpenStreetMap Nominatim), Radroute (FOSSGIS-Routing), Standort |
 | `js/map.js` | Kartenvorschau aus OpenStreetMap-Kacheln mit Routenlinie (ein SVG), Linie ausdünnen |

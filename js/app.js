@@ -2,6 +2,7 @@ import { load, save, clearPlain, importState, newId, DEFAULTS, RULE_PRESETS } fr
 import { hasVault, vaultMeta, createVault, unlockVault, verifyPin, importVault, removeVault, isVaultFile, weakPin } from './vault.js';
 import { askPin, hideLock, showMessage } from './lock.js';
 import { parseHealthText } from './health.js';
+import { classifyIncoming, staleConflicts, replaceInSlot } from './reconcile.js';
 import { buildNotifyConfig, normalizeUrl, pushSupport, enablePush, syncPush, disablePush, testPush, reportDay, fetchInbox, ackInbox, boschStatus, boschStart, boschSync, boschDisconnect } from './push.js';
 import { TITLES } from './messages.js';
 import { commuteScene, cyclist } from './scene.js';
@@ -418,9 +419,28 @@ const DIR_LABEL = { hin: 'Hinweg', rueck: 'Rückweg' };
 let editingRide = null; // Kennung der Fahrt, die gerade bearbeitet wird
 
 // Genauere Werte ersetzen eine von Hand eingetragene Fahrt am selben Tag in derselben Richtung
+const boschRide = (it) => ({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'bosch' }), ref: it.ref });
+
+// Nur für freie Plätze. Ist Tag und Richtung schon belegt, entscheidet der Abgleich (siehe conflictCard).
 function addImportedRide(it) {
-  state.rides = state.rides.filter((r) => !(r.source === 'manuell' && r.date === it.date && r.direction === it.direction));
-  state.rides.push({ ...makeRide({ date: it.date, direction: it.direction, km: it.km, minutes: it.minutes, kcal: it.kcal, source: 'bosch' }), ref: it.ref });
+  state.rides.push(boschRide(it));
+}
+
+const queuedEntry = (r) => ({ date: r.date, start: r.start, km: r.km, minutes: r.minutes, kcal: r.kcal, direction: r.direction, note: r.note, ref: r.ref });
+
+// Bestätigt: Bosch ersetzt den Eintrag an diesem Tag in dieser Richtung
+function takeBosch(c) {
+  state.rides = replaceInSlot(state.rides, c, boschRide(c));
+  state.rideConflicts = (state.rideConflicts ?? []).filter((x) => x.ref !== c.ref);
+}
+
+// Wurde der Gegenpart inzwischen gelöscht, ist der Platz frei: dann ohne Nachfrage übernehmen
+function settleConflicts() {
+  const free = staleConflicts(state.rideConflicts ?? [], state.rides);
+  if (!free.length) return false;
+  for (const c of free) addImportedRide(c);
+  state.rideConflicts = (state.rideConflicts ?? []).filter((c) => !free.includes(c));
+  return true;
 }
 
 // Fahrten, die der Dienst geliefert hat und die nicht zur Strecke passen, warten hier auf deine Entscheidung
@@ -448,23 +468,23 @@ async function pullInbox({ manual = false } = {}) {
     }
     let added = 0;
     let queued = 0;
+    let clashes = 0;
+    settleConflicts();
     for (const entry of items) {
       const { items: rides } = parseHealthText(entry.text, { distanceKm: state.route.distanceKm, today: todayISO() });
-      for (const r of rides) {
-        if (state.rides.some((x) => x.ref === r.ref) || (state.pendingRides ?? []).some((x) => x.ref === r.ref)) continue;
-        if (r.fits) {
-          addImportedRide(r);
-          added++;
-        } else {
-          state.pendingRides = [...(state.pendingRides ?? []), { date: r.date, start: r.start, km: r.km, minutes: r.minutes, kcal: r.kcal, direction: r.direction, note: r.note, ref: r.ref }].slice(-50);
-          queued++;
-        }
-      }
+      const out = classifyIncoming(rides, { rides: state.rides, pending: state.pendingRides ?? [], conflicts: state.rideConflicts ?? [], kept: state.keptRefs ?? [] });
+      for (const r of out.add) addImportedRide(r);
+      state.pendingRides = [...(state.pendingRides ?? []), ...out.pending.map(queuedEntry)].slice(-50);
+      state.rideConflicts = [...(state.rideConflicts ?? []), ...out.conflicts.map((c) => ({ ...queuedEntry(c), existingId: c.existingId }))].slice(-50);
+      added += out.add.length;
+      queued += out.pending.length;
+      clashes += out.conflicts.length;
     }
     persist();
     if (session) await session.flush(); // erst sicher gespeichert, dann beim Dienst löschen
     await ackInbox({ url: base, token: n.token, ids: items.map((i) => i.id) });
-    if (added || queued || manual) toast(added || queued ? `${added ? `${added} ${added === 1 ? 'Fahrt' : 'Fahrten'} übernommen` : ''}${added && queued ? ', ' : ''}${queued ? `${queued} zur Prüfung` : ''}` : 'Nichts Neues, alles schon da');
+    const parts = [added && `${added} ${added === 1 ? 'Fahrt' : 'Fahrten'} übernommen`, clashes && `${clashes} im Abgleich`, queued && `${queued} zur Prüfung`].filter(Boolean);
+    if (parts.length || manual) toast(parts.length ? parts.join(', ') : 'Nichts Neues, alles schon da');
     if (!locked && ['heute', 'fahrten', 'bilanz'].includes(currentTab())) render();
   } catch (e) {
     console.warn('Fahrten holen fehlgeschlagen:', e.message);
@@ -588,6 +608,38 @@ async function boschAction(fn) {
   }
 }
 
+const SOURCE_LABEL = { manuell: 'Von Hand', strava: 'Strava', health: 'Importiert', bosch: 'Bosch, bisher' };
+const rideFacts = (r) =>
+  [`${fmt.km(r.km)} km`, r.minutes ? `${r.minutes} min` : null, r.kcal != null ? `${fmt.int(r.kcal)} kcal${r.kcalSource === 'schätzung' ? '*' : ''}` : null].filter(Boolean).join(' · ');
+
+// Bosch hat eine Fahrt für einen Tag und eine Richtung, die schon belegt sind: nebeneinander zeigen, du entscheidest
+function conflictCard() {
+  const list = (state.rideConflicts ?? [])
+    .map((c) => ({ c, old: state.rides.find((r) => r.id === c.existingId) ?? state.rides.find((r) => r.date === c.date && r.direction === c.direction) }))
+    .filter((x) => x.old)
+    .sort((a, b) => (a.c.date === b.c.date ? (a.c.direction === 'hin' ? -1 : 1) : a.c.date < b.c.date ? 1 : -1));
+  if (!list.length) return '';
+  const rows = list
+    .map(
+      ({ c, old }) => `<li>
+        <strong>${fmt.dayShort(c.date)} · ${DIR_LABEL[c.direction]}</strong>
+        <dl class="versus">
+          <dt>${SOURCE_LABEL[old.source] ?? 'Von Hand'}</dt><dd>${rideFacts(old)}</dd>
+          <dt class="bosch">Bosch</dt><dd>${rideFacts(c)}${c.start ? ` · ab ${c.start}` : ''}</dd>
+        </dl>
+        ${c.note ? `<p class="note">${esc(c.note)}</p>` : ''}
+        <div class="actions"><button class="btn primary" data-action="conflict-take" data-ref="${esc(c.ref)}">Überschreiben</button><button class="btn ghost" data-action="conflict-keep" data-ref="${esc(c.ref)}">Behalten</button></div>
+      </li>`,
+    )
+    .join('');
+  return `<section class="card conflicts">
+    <h2>Abgleich mit Bosch</h2>
+    <p class="note">${list.length === 1 ? 'Für diese Fahrt gibt' : `Für diese ${list.length} Fahrten gibt`} es schon einen Eintrag. Bosch hat die gemessenen Werte. Erst nach deiner Bestätigung wird überschrieben.</p>
+    <ul class="conflict-list">${rows}</ul>
+    ${list.length > 1 ? `<button class="btn wide" data-action="conflict-take-all">Alle ${list.length} mit Bosch überschreiben</button>` : ''}
+  </section>`;
+}
+
 function reviewCard() {
   if (!importPreview) importPreview = pendingPreview();
   if (importPreview) {
@@ -628,6 +680,7 @@ function editRideForm(r) {
 }
 
 function renderRides() {
+  if (settleConflicts()) persist();
   const perKm = summarize([], state).perKm;
   const rides = [...state.rides].sort((a, b) => (a.date === b.date ? (a.direction === 'hin' ? 1 : -1) : a.date < b.date ? 1 : -1));
   const groups = new Map();
@@ -647,6 +700,7 @@ function renderRides() {
       : '<p class="muted">Noch keine Fahrten. Trag deine erste unten ein.</p>'
   }</header>
 
+  ${conflictCard()}
   ${reviewCard()}
   ${
     connected
@@ -1248,7 +1302,7 @@ function renderSettings() {
     </div>
     <p class="sec-note">${session ? 'Die Sicherung ist verschlüsselt und lässt sich nur mit deiner PIN wieder öffnen.' : 'Die Sicherung ist eine Klartext-Datei. Bewahre sie sicher auf oder schalte die App-Sperre ein.'}</p>
   </div></section>
-  <p class="footnote">Rückenwind v0.16 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
+  <p class="footnote">Rückenwind v0.17 · Wetter: Open-Meteo · Adressen: © OpenStreetMap</p>`;
 
   if (sessionStorage.getItem('scrollTo')) {
     document.getElementById(sessionStorage.getItem('scrollTo'))?.scrollIntoView();
@@ -1475,11 +1529,19 @@ const actions = {
   },
   'review-apply': () => {
     const chosen = (importPreview?.items ?? []).filter((i) => i.checked && !i.dup);
-    for (const it of chosen) addImportedRide(it);
+    let clash = 0;
+    for (const it of chosen) {
+      const existing = state.rides.find((r) => r.date === it.date && r.direction === it.direction);
+      if (existing) {
+        state.rideConflicts = [...(state.rideConflicts ?? []), { ...queuedEntry(it), existingId: existing.id }].slice(-50);
+        clash++;
+      } else addImportedRide(it);
+    }
     if (importPreview?.fromPending) state.pendingRides = (state.pendingRides ?? []).filter((p) => !chosen.some((c) => c.ref === p.ref));
     importPreview = null;
     persist();
-    toast(`${chosen.length} ${chosen.length === 1 ? 'Fahrt' : 'Fahrten'} übernommen`);
+    const taken = chosen.length - clash;
+    toast([taken && `${taken} ${taken === 1 ? 'Fahrt' : 'Fahrten'} übernommen`, clash && `${clash} im Abgleich, der Tag ist schon belegt`].filter(Boolean).join(', ') || 'Nichts übernommen');
     renderRides();
   },
   'pin-len': (el) => {
@@ -1550,6 +1612,31 @@ const actions = {
   },
   'edit-cancel': () => {
     editingRide = null;
+    renderRides();
+  },
+  'conflict-take': (el) => {
+    const c = (state.rideConflicts ?? []).find((x) => x.ref === el.dataset.ref);
+    if (!c) return;
+    takeBosch(c);
+    persist();
+    toast('Mit den Bosch-Werten überschrieben');
+    renderRides();
+  },
+  'conflict-keep': (el) => {
+    const c = (state.rideConflicts ?? []).find((x) => x.ref === el.dataset.ref);
+    if (!c) return;
+    state.keptRefs = [...(state.keptRefs ?? []), c.ref].slice(-300);
+    state.rideConflicts = state.rideConflicts.filter((x) => x !== c);
+    persist();
+    toast('Dein Eintrag bleibt. Bosch fragt dafür nicht noch einmal.');
+    renderRides();
+  },
+  'conflict-take-all': () => {
+    const list = [...(state.rideConflicts ?? [])];
+    if (!list.length || !confirm(`Alle ${list.length} Einträge mit den Bosch-Werten überschreiben?`)) return;
+    for (const c of list) takeBosch(c);
+    persist();
+    toast(`${list.length} Einträge mit Bosch überschrieben`);
     renderRides();
   },
   'delete-ride': (el) => {

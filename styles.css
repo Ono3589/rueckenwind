@@ -910,3 +910,15 @@ html { touch-action: manipulation; }
 }
 .edit-form input:focus, .edit-form select:focus { outline: none; border-color: var(--accent); }
 .icon-btn.edit:hover { color: var(--accent-ink); }
+
+/* ---------- Abgleich mit Bosch ---------- */
+.conflicts h2 { margin-bottom: 4px; }
+.conflict-list { list-style: none; margin: 10px 0 14px; padding: 0; }
+.conflict-list li { padding: 14px 0; }
+.conflict-list li + li { border-top: 1px solid var(--line); }
+.conflict-list strong { font-size: 15px; font-weight: 600; }
+.versus { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 8px 0 12px; font-size: 14px; }
+.versus dt { color: var(--muted); }
+.versus dt.bosch { color: var(--accent-ink); font-weight: 700; }
+.versus dd { margin: 0; font-variant-numeric: tabular-nums; }
+.conflict-list .note { margin: -4px 0 10px; }

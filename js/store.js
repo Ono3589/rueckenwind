@@ -82,6 +82,8 @@ export const DEFAULTS = {
     lastSync: 0,
   },
   pendingRides: [], // aus dem Dienst geholte Fahrten, die nicht zur Strecke passen und auf deine Entscheidung warten
+  rideConflicts: [], // Bosch-Fahrten für einen schon belegten Tag/Richtung: warten auf „überschreiben“ oder „behalten“
+  keptRefs: [], // Bosch-Fahrten, bei denen du deinen Eintrag behalten hast (werden nicht erneut angeboten)
   rides: [], // { id, date, direction: 'hin'|'rueck', km, minutes, kcal, kcalSource, source, stravaId }
 };
 
